@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
-const API = "https://api.anthropic.com/v1/messages";
-const MODEL = "claude-sonnet-4-20250514";
+const API = "/.netlify/functions/ai";
+const MODEL = "llama-3.3-70b-versatile";
 
 const C = {
   bg: "#08080E", surface: "#0F0F1A", card: "#13131E", border: "#1C1C2E",
@@ -166,7 +166,12 @@ function useMsgs() {
 }
 
 async function ai(messages, system, maxTokens=1000) {
-  const r = await fetch(API, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ model:MODEL, max_tokens:maxTokens, system, messages }) });
+  const r = await fetch(API, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model: MODEL, max_tokens: maxTokens, system, messages })
+  });
+  if (!r.ok) throw new Error(`API error: ${r.status}`);
   const d = await r.json();
   return d.content?.[0]?.text || "";
 }
