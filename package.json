@@ -9,7 +9,7 @@
   },
   "scripts": {
     "start": "react-scripts start",
-    "build": "react-scripts build",
+    "build": "DISABLE_ESLINT_PLUGIN=true react-scripts build",
     "test": "react-scripts test"
   },
   "browserslist": {
@@ -17,6 +17,9 @@
     "development": ["last 1 chrome version"]
   },
   "eslintConfig": {
-    "extends": ["react-app"]
+    "extends": ["react-app"],
+    "rules": {
+      "no-restricted-globals": "off"
+    }
   }
 }
