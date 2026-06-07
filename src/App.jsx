@@ -142,8 +142,19 @@ Respond in this exact JSON format (no fences):
 // In production: replace sendWhatsApp with real API call to your Laravel backend
 // which calls WhatsApp Business API / Twilio. This simulates the full flow.
 async function sendWhatsApp(phone, message) {
-  // Simulate API call — replace with: fetch('/api/whatsapp/send', {method:'POST', body: JSON.stringify({phone, message})})
-  return new Promise(resolve => setTimeout(() => resolve({ ok: true, messageId: `wa_${Date.now()}` }), 800));
+  try {
+    const r = await fetch("/whatsapp", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to: phone, message })
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || "WhatsApp send failed");
+    return { ok: true, messageId: d.sid };
+  } catch(e) {
+    console.error("WhatsApp error:", e);
+    return { ok: false, error: e.message };
+  }
 }
 
 function scheduleWhatsAppReminder(reminder, phone, addLog) {
