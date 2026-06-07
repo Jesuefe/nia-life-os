@@ -346,7 +346,7 @@ function Onboarding({onComplete}) {
   useEffect(()=>{bottomRef.current?.scrollIntoView({behavior:"smooth"});},[msgs]);
 
   const next=()=>{
-    const val=input.trim(); if(!val||loading) return;
+    const val=input.trim(); if(!val) return;
     const newA={...answers,[OQ[step].field]:val};
     setAnswers(newA);
     setMsgs(m=>[...m,{role:"user",text:val}]);
@@ -356,7 +356,7 @@ function Onboarding({onComplete}) {
       setLoading(true);
       const q=OQ[ns].q;
       const txt=typeof q==="function"?q(newA):q;
-      setTimeout(()=>{ setMsgs(m=>[...m,{role:"nia",text:txt}]); speak(txt); setStep(ns); setLoading(false); },600);
+      setTimeout(()=>{ setMsgs(m=>[...m,{role:"nia",text:txt}]); try{speak(txt);}catch{} setStep(ns); setLoading(false); },600);
     } else {
       const close=`Perfect, ${newA.name}! I have everything I need. Let's get started. 🙏`;
       setMsgs(m=>[...m,{role:"nia",text:close}]); speak(close);
@@ -390,7 +390,7 @@ function Onboarding({onComplete}) {
       <div style={{position:"fixed",bottom:0,left:0,right:0,background:C.surface,borderTop:`1px solid ${C.border}`,padding:"14px 20px"}}>
         <div style={{maxWidth:540,margin:"0 auto",display:"flex",gap:10}}>
           <Input value={input} onChange={setInput} placeholder="Type your answer…" onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();next();}}} style={{flex:1}} autoFocus/>
-          <Btn variant="primary" onClick={next} disabled={!input.trim()||loading} icon="send"/>
+          <Btn variant="primary" onClick={next} disabled={!input.trim()} icon="send"/>
         </div>
       </div>
       <style>{`@keyframes pulse{0%,80%,100%{opacity:0.3;transform:scale(0.9)}40%{opacity:1;transform:scale(1)}}@keyframes spin{to{transform:rotate(360deg)}}`}</style>
