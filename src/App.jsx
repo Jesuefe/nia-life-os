@@ -715,11 +715,11 @@ function ChatView({mem,save,msgs,addMsg,onOpenWA,user}) {
             u.habitLogs=logs;
             u.reminders=(u.reminders||mem.reminders).map(r=>ds.has(r.id)?{...r,done:true}:r);
           }
-          // Send immediate WhatsApp if requested
-          if(p.whatsappNow&&mem.whatsappNumber){
-            sendWhatsApp(mem.whatsappNumber, p.whatsappNow).then(r=>{
-              if(r.ok) addMsg({role:"assistant",content:"✅ WhatsApp sent to "+mem.whatsappNumber});
-              else addMsg({role:"assistant",content:"⚠️ WhatsApp failed: "+r.error});
+          // Send immediate WhatsApp ONLY when explicitly requested
+          if(p.whatsappNow&&mem.whatsappNumber&&typeof p.whatsappNow==="string"&&p.whatsappNow.length>5){
+            sendWhatsApp(mem.whatsappNumber, "Nia: "+p.whatsappNow).then(r=>{
+              if(r.ok) console.log("WhatsApp sent:", p.whatsappNow);
+              else console.error("WhatsApp failed:", r.error);
             });
           }
           if(Object.keys(u).length){
@@ -1742,6 +1742,31 @@ function AuthenticatedApp({user}) {
     localStorage.removeItem("nia_msgs_v3");
     await supabase.auth.signOut();
   };
+
+  // Proactive WhatsApp nudges every 2 hours
+  useEffect(()=>{
+    if(!user||!mem.whatsappNumber) return;
+    const NUDGES=[
+      (m)=>`Hey ${m.userName||"there"}! 💧 How's your water intake? You've had ${m.health?.waterToday||0}L of your ${m.health?.waterGoal||2.5}L goal today. Come tell me how you're doing — nia-life-os.pages.dev`,
+      (m)=>`${m.userName||"Hey"}! ✨ Checking in — how's your day going? Have you been working on your goals? Drop in and let me know — nia-life-os.pages.dev`,
+      (m)=>{const meds=(m.health?.medications||[]).filter(med=>!m.health?.medLogs?.[med.id+"_"+new Date().toDateString().replace(/ /g,"_")]); return meds.length?`${m.userName||"Hey"}! 💊 Reminder — have you taken your ${meds.map(x=>x.name).join(", ")}? Log it on Nia — nia-life-os.pages.dev`:`${m.userName||"Hey"}! 🌟 Just checking in. How's everything going? Come tell me about your day — nia-life-os.pages.dev`;},
+      (m)=>`${m.userName||"Hey"}! ☀️ Nia here. Have you eaten well today? Remember to take care of yourself — your goals need a healthy you. nia-life-os.pages.dev`,
+      (m)=>{const pending=(m.reminders||[]).filter(r=>!r.done); return pending.length?`${m.userName||"Hey"}! ⏰ You have ${pending.length} pending reminder${pending.length>1?"s":""}: "${pending[0].title}". Check your Nia app — nia-life-os.pages.dev`:`${m.userName||"Hey"}! 🎯 You're all caught up on reminders. Want to set new goals? Open Nia — nia-life-os.pages.dev`;},
+    ];
+    let nudgeIndex=0;
+    const sendNudge=async()=>{
+      const now=new Date();
+      const h=now.getHours();
+      if(h<7||h>=22) return; // Quiet hours
+      const nudgeFn=NUDGES[nudgeIndex%NUDGES.length];
+      const msg=nudgeFn(mem);
+      await sendWhatsApp(mem.whatsappNumber,msg);
+      nudgeIndex++;
+    };
+    // Send first nudge after 2 hours, then every 2 hours
+    const timer=setInterval(sendNudge,2*60*60*1000);
+    return()=>clearInterval(timer);
+  },[user,mem.whatsappNumber]);
 
   if(!mem.onboarded) return <Onboarding onComplete={save}/>;
 
