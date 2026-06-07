@@ -1708,32 +1708,18 @@ function InspireView({mem}) {
 }
 
 // ─── TRAVEL VIEW ─────────────────────────────────────────────────────────────
-const ROUTES=[
-  {from:"Lagos",to:"Abuja",flight:{min:65000,max:180000,time:"1h 10min"},bus:{min:15000,max:35000,time:"8–10hrs",operators:"GUO, Chisco, ABC"}},
-  {from:"Abuja",to:"Lagos",flight:{min:65000,max:180000,time:"1h 10min"},bus:{min:15000,max:35000,time:"8–10hrs",operators:"GUO, Chisco, ABC"}},
-  {from:"Lagos",to:"Port Harcourt",flight:{min:55000,max:140000,time:"55min"},bus:{min:8000,max:20000,time:"6–7hrs",operators:"GUO, Peace Mass"}},
-  {from:"Abuja",to:"Port Harcourt",flight:{min:60000,max:150000,time:"1hr"},bus:{min:10000,max:25000,time:"8–9hrs",operators:"GUO, ABC"}},
-  {from:"Lagos",to:"Ibadan",flight:null,bus:{min:3000,max:8000,time:"1.5–2hrs",operators:"ABC, Young Shall Grow"}},
-  {from:"Abuja",to:"Kano",flight:{min:45000,max:100000,time:"55min"},bus:{min:8000,max:15000,time:"3–4hrs",operators:"GUO, Malam buses"}},
-  {from:"Lagos",to:"Enugu",flight:{min:55000,max:130000,time:"1hr"},bus:{min:7000,max:18000,time:"6–7hrs",operators:"Peace Mass, Ifesinachi"}},
-  {from:"Lagos",to:"UK",flight:{min:800000,max:2500000,time:"6–7hrs"},bus:null},
-  {from:"Abuja",to:"UK",flight:{min:850000,max:2600000,time:"6–7hrs"},bus:null},
-  {from:"Lagos",to:"Dubai",flight:{min:450000,max:900000,time:"7hrs"},bus:null},
-  {from:"Lagos",to:"Ghana",flight:{min:200000,max:500000,time:"1hr"},bus:null},
-];
-
-function fmt(n){return "₦"+n.toLocaleString();}
+function fmt(n){return "₦"+Number(n).toLocaleString();}
 
 function TravelView({mem,save}) {
   const [from,setFrom]=useState("");
   const [to,setTo]=useState("");
-  const [pref,setPref]=useState("both");
-  const [result,setResult]=useState(null);
-  const [loading,setLoading]=useState(false);
-  const [tracked,setTracked]=useState(mem.trackedRoutes||[]);
+  const [date,setDate]=useState("");
   const [tip,setTip]=useState("");
+  const [loadingTip,setLoadingTip]=useState(false);
 
-  // Auto-fill from last travel intent
+  const POPULAR=[["Abuja","Lagos"],["Lagos","Abuja"],["Lagos","Port Harcourt"],["Abuja","Kano"],["Lagos","UK"],["Lagos","Dubai"]];
+  const today=new Date().toISOString().split("T")[0];
+
   useEffect(()=>{
     if(mem.lastTravelIntent){
       if(mem.lastTravelIntent.from) setFrom(mem.lastTravelIntent.from);
@@ -1741,34 +1727,25 @@ function TravelView({mem,save}) {
     }
   },[mem.lastTravelIntent]);
 
-  const CITIES=["Lagos","Abuja","Port Harcourt","Kano","Ibadan","Enugu","Kaduna","UK","Dubai","Ghana","Accra"];
-
-  const search=async()=>{
-    if(!from||!to){return;}
-    setLoading(true); setResult(null);
-    // Find matching route
-    const route=ROUTES.find(r=>r.from.toLowerCase()===from.toLowerCase()&&r.to.toLowerCase()===to.toLowerCase())
-      ||ROUTES.find(r=>r.from.toLowerCase().includes(from.toLowerCase())&&r.to.toLowerCase().includes(to.toLowerCase()));
-    // Get AI tip
-    const aiTip=await ai([{role:"user",content:"Give one short travel tip for traveling from "+from+" to "+to+". Max 2 sentences. Focus on Nigerian travel context — price timing, comfort, safety, convenience."}],"You are a Nigerian travel expert. Give practical, honest travel tips. Short and direct.");
-    setTip(aiTip);
-    if(route){
-      setResult(route);
-    } else {
-      // AI-generated estimate for unknown routes
-      const aiResult=await ai([{role:"user",content:"Estimate travel options from "+from+" to "+to+" in Nigeria or internationally from Nigeria. Return JSON only: {flight:{min:number,max:number,time:string},bus:{min:number,max:number,time:string,operators:string}} — use null for unavailable options. Use Nigerian Naira. Be realistic."}],"Return ONLY valid JSON. No fences. Realistic Nigerian travel prices.");
-      try{
-        const parsed=JSON.parse(aiResult.replace(/```json|```/g,"").trim());
-        setResult({from,to,...parsed});
-      }catch{setResult({from,to,flight:null,bus:null,aiError:true});}
-    }
-    setLoading(false);
+  const getTip=async()=>{
+    if(!from||!to) return;
+    setLoadingTip(true);
+    const r=await ai([{role:"user",content:`Give a 2-sentence travel tip for ${from} to ${to} from Nigeria. Include best day to book and rough price range.`}],"You are a Nigerian travel expert. Be brief and practical.");
+    setTip(r);
+    setLoadingTip(false);
   };
 
-  const trackRoute=()=>{
-    const newTracked=[...tracked,{from,to,ts:Date.now(),alertBelow:result?.flight?.min*0.85||0}];
-    setTracked(newTracked);
-    save({trackedRoutes:newTracked});
+  const buildSearchUrl=(site)=>{
+    const f=encodeURIComponent(from);
+    const t=encodeURIComponent(to);
+    const d=date||today;
+    const urls={
+      google:`https://www.google.com/travel/flights?q=flights+from+${f}+to+${t}`,
+      wakanow:`https://www.wakanow.com/en-NG/flights/search?origin=${f}&destination=${t}&departureDate=${d}&tripType=OneWay&adults=1`,
+      travelstart:`https://www.travelstart.com.ng/lp/search?from=${f}&to=${t}&date=${d}&adults=1`,
+      skyscanner:`https://www.skyscanner.net/transport/flights/${f.toLowerCase()}/${t.toLowerCase()}/${d.replace(/-/g,"")}/`,
+    };
+    return urls[site]||urls.google;
   };
 
   return(
@@ -1776,126 +1753,89 @@ function TravelView({mem,save}) {
       <div style={{marginBottom:20}}>
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
           <Icon name="map" size={18} color={C.accent}/>
-          <h2 style={{fontSize:20,fontWeight:600,margin:0}}>Travel Intelligence</h2>
+          <h2 style={{fontSize:20,fontWeight:600,margin:0}}>Travel</h2>
         </div>
-        <p style={{color:C.textMuted,fontSize:13,margin:0}}>Compare flights and buses. Get smart travel advice. No booking — just intelligence.</p>
+        <p style={{color:C.textMuted,fontSize:13,margin:0}}>Search real prices on top Nigerian travel sites.</p>
       </div>
 
-      {/* Search */}
       <Card style={{marginBottom:16}}>
         <div style={{display:"flex",gap:10,marginBottom:12,flexWrap:"wrap"}}>
-          <div style={{flex:1,minWidth:130}}>
+          <div style={{flex:1,minWidth:120}}>
             <p style={{fontSize:11,color:C.textMuted,margin:"0 0 5px"}}>From</p>
-            <Input value={from} onChange={setFrom} placeholder="e.g. Abuja" onKeyDown={e=>e.key==="Enter"&&search()}/>
+            <Input value={from} onChange={setFrom} placeholder="e.g. Abuja"/>
           </div>
-          <div style={{flex:1,minWidth:130}}>
+          <div style={{flex:1,minWidth:120}}>
             <p style={{fontSize:11,color:C.textMuted,margin:"0 0 5px"}}>To</p>
-            <Input value={to} onChange={setTo} placeholder="e.g. Lagos" onKeyDown={e=>e.key==="Enter"&&search()}/>
+            <Input value={to} onChange={setTo} placeholder="e.g. Lagos"/>
+          </div>
+          <div style={{flex:1,minWidth:120}}>
+            <p style={{fontSize:11,color:C.textMuted,margin:"0 0 5px"}}>Date</p>
+            <input type="date" value={date} min={today} onChange={e=>setDate(e.target.value)} style={{background:C.surface,border:"1px solid "+C.border,color:C.text,borderRadius:10,padding:"10px 12px",fontSize:13,fontFamily:"inherit",width:"100%",boxSizing:"border-box"}}/>
           </div>
         </div>
-        <div style={{display:"flex",gap:8,marginBottom:12}}>
-          {["both","flight","bus"].map(p=>(
-            <button key={p} onClick={()=>setPref(p)} style={{padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:500,cursor:"pointer",fontFamily:"inherit",border:"1px solid "+(pref===p?C.accent:C.border),background:pref===p?C.accentMid:"transparent",color:pref===p?C.accent:C.textMuted,transition:"all 0.2s"}}>
-              {p==="both"?"✈️ 🚌 Both":p==="flight"?"✈️ Flights":"🚌 Buses"}
-            </button>
-          ))}
-        </div>
-        <Btn variant="primary" onClick={search} loading={loading} icon="map" style={{width:"100%",justifyContent:"center"}}>
-          Find best options
-        </Btn>
+
+        {from&&to&&<>
+          <p style={{fontSize:12,color:C.textMuted,margin:"0 0 10px"}}>Search on:</p>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+            {[
+              {site:"google",label:"Google Flights",icon:"✈️",color:C.accent,desc:"Compare all airlines"},
+              {site:"wakanow",label:"Wakanow",icon:"🇳🇬",color:"#e85d04",desc:"Best Nigerian prices"},
+              {site:"travelstart",label:"Travelstart",icon:"🌍",color:"#2563eb",desc:"Flights & buses"},
+              {site:"skyscanner",label:"Skyscanner",icon:"🔍",color:"#0770e3",desc:"Global comparison"},
+            ].map(({site,label,icon,color,desc})=>(
+              <a key={site} href={buildSearchUrl(site)} target="_blank" rel="noreferrer"
+                style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",borderRadius:12,border:"1px solid "+C.border,background:C.surface,textDecoration:"none",cursor:"pointer",transition:"all 0.2s"}}>
+                <span style={{fontSize:22}}>{icon}</span>
+                <div>
+                  <p style={{margin:"0 0 2px",fontSize:13,fontWeight:600,color:C.text}}>{label}</p>
+                  <p style={{margin:0,fontSize:11,color:C.textMuted}}>{desc}</p>
+                </div>
+                <span style={{marginLeft:"auto",fontSize:12,color:color}}>↗</span>
+              </a>
+            ))}
+          </div>
+          <Btn variant="ghost" onClick={getTip} loading={loadingTip} size="sm" icon="sparkle">
+            Get Nia's travel tip for this route
+          </Btn>
+          {tip&&<div style={{marginTop:10,padding:"10px 14px",background:C.accentMid,borderRadius:10,border:"1px solid "+C.accent}}>
+            <p style={{margin:0,fontSize:13,color:C.text,lineHeight:1.6}}>✨ {tip}</p>
+          </div>}
+        </>}
       </Card>
 
-      {/* Quick routes */}
-      {!result&&<div style={{marginBottom:16}}>
+      {/* Popular routes */}
+      <div style={{marginBottom:16}}>
         <p style={{fontSize:12,color:C.textMuted,margin:"0 0 8px"}}>Popular routes</p>
         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-          {[["Abuja","Lagos"],["Lagos","Abuja"],["Lagos","Port Harcourt"],["Abuja","UK"],["Lagos","Dubai"]].map(([f,t])=>(
-            <button key={f+t} onClick={()=>{setFrom(f);setTo(t);}} style={{padding:"5px 12px",borderRadius:99,fontSize:12,cursor:"pointer",fontFamily:"inherit",border:"1px solid "+C.border,background:"transparent",color:C.textMuted}}>
+          {POPULAR.map(([f,t])=>(
+            <button key={f+t} onClick={()=>{setFrom(f);setTo(t);}} style={{padding:"6px 12px",borderRadius:99,fontSize:12,cursor:"pointer",fontFamily:"inherit",border:"1px solid "+C.border,background:"transparent",color:C.textMuted}}>
               {f} → {t}
             </button>
           ))}
         </div>
-      </div>}
+      </div>
 
-      {/* Results */}
-      {result&&<div>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-          <h3 style={{fontSize:16,fontWeight:600,margin:0}}>{result.from} → {result.to}</h3>
-          <button onClick={trackRoute} style={{background:"none",border:"1px solid "+C.border,borderRadius:8,padding:"4px 10px",fontSize:11,cursor:"pointer",color:C.textMuted,fontFamily:"inherit"}}>
-            🔔 Track route
-          </button>
-        </div>
-
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
-          {result.flight&&(pref==="both"||pref==="flight")&&(
-            <Card style={{background:C.accentMid,border:"1px solid "+C.accent}}>
-              <div style={{fontSize:20,marginBottom:6}}>✈️</div>
-              <p style={{fontSize:11,color:C.accent,fontWeight:600,margin:"0 0 4px",textTransform:"uppercase",letterSpacing:"0.05em"}}>Flight</p>
-              <p style={{fontSize:22,fontWeight:700,margin:"0 0 2px",color:C.text}}>{fmt(result.flight.min)}</p>
-              <p style={{fontSize:12,color:C.textMuted,margin:"0 0 8px"}}>up to {fmt(result.flight.max)} · {result.flight.time}</p>
-              <div style={{fontSize:11,color:C.textMuted,padding:"6px 8px",background:C.surface,borderRadius:8}}>
-                💡 Book Tue–Thu for cheapest fares. Avoid Fridays.
-              </div>
-            </Card>
-          )}
-          {result.bus&&(pref==="both"||pref==="bus")&&(
-            <Card style={{background:"rgba(34,197,94,0.08)",border:"1px solid "+C.success}}>
-              <div style={{fontSize:20,marginBottom:6}}>🚌</div>
-              <p style={{fontSize:11,color:C.success,fontWeight:600,margin:"0 0 4px",textTransform:"uppercase",letterSpacing:"0.05em"}}>Bus</p>
-              <p style={{fontSize:22,fontWeight:700,margin:"0 0 2px",color:C.text}}>{fmt(result.bus.min)}</p>
-              <p style={{fontSize:12,color:C.textMuted,margin:"0 0 8px"}}>up to {fmt(result.bus.max)} · {result.bus.time}</p>
-              <div style={{fontSize:11,color:C.textMuted,padding:"6px 8px",background:C.surface,borderRadius:8}}>
-                🚌 {result.bus.operators||"Major operators available"}
-              </div>
-            </Card>
-          )}
-        </div>
-
-        {/* Recommendation */}
-        {result.flight&&result.bus&&(
-          <Card style={{marginBottom:12,borderLeft:"3px solid "+C.accent}}>
-            <p style={{fontSize:12,fontWeight:600,color:C.accent,margin:"0 0 6px"}}>🧠 Nia's recommendation</p>
-            <p style={{fontSize:13,color:C.text,margin:"0 0 4px"}}>
-              <strong>Cheapest:</strong> Bus at {fmt(result.bus.min)}
-            </p>
-            <p style={{fontSize:13,color:C.text,margin:"0 0 4px"}}>
-              <strong>Fastest:</strong> Flight at {fmt(result.flight.min)} ({result.flight.time})
-            </p>
-            <p style={{fontSize:13,color:C.text,margin:0}}>
-              <strong>Best value:</strong> {result.flight.min<100000?"Flight — worth it for the time saved":"Bus if budget is tight, flight if time matters"}
-            </p>
-          </Card>
-        )}
-
-        {/* AI Tip */}
-        {tip&&<Card style={{marginBottom:12,background:C.surface}}>
-          <p style={{fontSize:12,fontWeight:600,color:C.textMuted,margin:"0 0 6px"}}>✨ Travel tip</p>
-          <p style={{fontSize:13,color:C.text,margin:0,lineHeight:1.6}}>{tip}</p>
-        </Card>}
-
-        {result.aiError&&<Card style={{marginBottom:12}}>
-          <p style={{fontSize:13,color:C.textMuted,margin:0}}>No data found for this route. Try asking Nia in chat for this route — she can give you a detailed breakdown.</p>
-        </Card>}
-
-        <Btn variant="ghost" onClick={()=>setResult(null)} icon="refresh" size="sm">New search</Btn>
-      </div>}
-
-      {/* Tracked routes */}
-      {tracked.length>0&&<div style={{marginTop:20}}>
-        <p style={{fontSize:13,fontWeight:600,margin:"0 0 8px",color:C.textMuted}}>Tracked routes</p>
-        {tracked.map((r,i)=>(
-          <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:C.surface,borderRadius:10,marginBottom:8,border:"1px solid "+C.border}}>
-            <span style={{fontSize:13,color:C.text}}>{r.from} → {r.to}</span>
-            <div style={{display:"flex",gap:8,alignItems:"center"}}>
-              <span style={{fontSize:11,color:C.textMuted}}>Alert below {fmt(r.alertBelow)}</span>
-              <button onClick={()=>{const t=tracked.filter((_,j)=>j!==i);setTracked(t);save({trackedRoutes:t});}} style={{background:"none",border:"none",cursor:"pointer",color:C.danger,fontSize:11,fontFamily:"inherit"}}>Remove</button>
-            </div>
+      {/* Tips */}
+      <Card>
+        <p style={{fontSize:12,fontWeight:600,color:C.textMuted,margin:"0 0 10px",textTransform:"uppercase",letterSpacing:"0.05em"}}>✈️ Smart booking tips</p>
+        {[
+          "Book flights Tuesday–Thursday for cheapest fares",
+          "Book 3–6 weeks ahead for domestic flights",
+          "Night buses save you hotel costs on long routes",
+          "Air Peace and Ibom Air usually have the best domestic prices",
+          "GUO, ABC and Chisco are the most reliable bus operators",
+          "Lagos–Abuja flights spike on Friday evenings and Sunday nights",
+        ].map((t,i)=>(
+          <div key={i} style={{display:"flex",gap:8,marginBottom:8,alignItems:"flex-start"}}>
+            <span style={{color:C.accent,fontSize:14,marginTop:1}}>•</span>
+            <p style={{margin:0,fontSize:13,color:C.textMuted,lineHeight:1.5}}>{t}</p>
           </div>
         ))}
-      </div>}
+      </Card>
     </div>
   );
 }
+
 
 // ─── NAV ─────────────────────────────────────────────────────────────────────
 const NAV=[{id:"chat",icon:"chat",label:"Chat"},{id:"morning",icon:"sun",label:"Briefing"},{id:"goals",icon:"target",label:"Goals"},{id:"habits",icon:"loop",label:"Habits"},{id:"reminders",icon:"bell",label:"Reminders"},{id:"health",icon:"heart",label:"Health"},{id:"travel",icon:"map",label:"Travel"},{id:"inspire",icon:"image",label:"Inspire"},{id:"memory",icon:"brain",label:"Memory"}];
