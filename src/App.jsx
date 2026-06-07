@@ -102,12 +102,12 @@ TASK AUTO-MANAGEMENT:
 - Auto-create reminders for one-time things, habits for recurring
 - Confirm all actions clearly
 
-WHATSAPP:
-- whatsappNumber in memory = connected. You CAN send real WhatsApp messages.
-- For immediate messages: extraction will pick up whatsappNow and send instantly
-- Say "Sending to your WhatsApp now..." when user asks for immediate notification
-- For scheduled reminders: create a reminder with whatsapp:true
-- If not connected: suggest they connect in Memory tab
+WHATSAPP — CRITICAL:
+- Check whatsappConnected in USER data above. If true, WhatsApp IS connected.
+- NEVER say WhatsApp is not connected if whatsappConnected is true.
+- When user asks to send WhatsApp: say "Sending to your WhatsApp now!" and set whatsappNow in extraction
+- For scheduled reminders: create reminder with whatsapp:true
+- The number is: ${mem.whatsappNumber||"not connected"}
 
 RESPONSE FORMAT: Conversational, max 3 paragraphs, end with question or encouraging close`;
 };
