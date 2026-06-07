@@ -323,8 +323,8 @@ function Dots() {
   </div>;
 }
 function NiaAvatar({size=32}) {
-  return <div style={{width:size,height:size,borderRadius:"50%",background:C.accentMid,border:`1px solid ${C.accent}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-    <Icon name="sparkle" size={size*0.5} color={C.accent}/>
+  return <div style={{width:size,height:size,borderRadius:"50%",overflow:"hidden",flexShrink:0,border:`2px solid ${C.accent}`,background:C.accentMid}}>
+    <img src="/logo192.png" alt="Nia" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
   </div>;
 }
 
@@ -373,7 +373,7 @@ function Onboarding({onComplete}) {
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet"/>
       <div style={{flex:1,display:"flex",flexDirection:"column",maxWidth:540,margin:"0 auto",width:"100%",padding:"24px 20px 110px"}}>
         <div style={{textAlign:"center",paddingTop:32,marginBottom:32}}>
-          <div style={{width:60,height:60,borderRadius:"50%",background:C.accentMid,border:`2px solid ${C.accent}`,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 14px"}}><Icon name="sparkle" size={28} color={C.accent}/></div>
+          <div style={{width:60,height:60,borderRadius:"50%",overflow:"hidden",border:`2px solid ${C.accent}`,margin:"0 auto 14px",background:C.accentMid}}><img src="/logo192.png" alt="Nia" style={{width:"100%",height:"100%",objectFit:"cover"}}/></div>
           <h1 style={{fontSize:22,fontWeight:600,margin:"0 0 4px",color:C.text}}>Meet Nia</h1>
           <p style={{color:C.textMuted,fontSize:13,margin:"0 0 16px"}}>Your personal AI life companion</p>
           <div style={{display:"flex",justifyContent:"center",gap:6}}>
