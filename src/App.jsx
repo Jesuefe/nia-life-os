@@ -1708,14 +1708,12 @@ function InspireView({mem}) {
 }
 
 // ─── TRAVEL VIEW ─────────────────────────────────────────────────────────────
-function fmt(n){return "₦"+Number(n).toLocaleString();}
-
 function TravelView({mem,save}) {
   const [from,setFrom]=useState("");
   const [to,setTo]=useState("");
   const [date,setDate]=useState("");
-  const [tip,setTip]=useState("");
-  const [loadingTip,setLoadingTip]=useState(false);
+  const [results,setResults]=useState("");
+  const [loading,setLoading]=useState(false);
 
   const POPULAR=[["Abuja","Lagos"],["Lagos","Abuja"],["Lagos","Port Harcourt"],["Abuja","Kano"],["Lagos","UK"],["Lagos","Dubai"]];
   const today=new Date().toISOString().split("T")[0];
@@ -1727,25 +1725,24 @@ function TravelView({mem,save}) {
     }
   },[mem.lastTravelIntent]);
 
-  const getTip=async()=>{
-    if(!from||!to) return;
-    setLoadingTip(true);
-    const r=await ai([{role:"user",content:`Give a 2-sentence travel tip for ${from} to ${to} from Nigeria. Include best day to book and rough price range.`}],"You are a Nigerian travel expert. Be brief and practical.");
-    setTip(r);
-    setLoadingTip(false);
-  };
+  const search=async()=>{
+    if(!from.trim()||!to.trim()) return;
+    setLoading(true); setResults("");
+    const dateStr=date?new Date(date).toLocaleDateString("en-NG",{day:"numeric",month:"long",year:"numeric"}):"today or the nearest available date";
+    const query=`flights from ${from} to ${to} ${date?dateStr:""} prices airlines Nigeria naira`;
+    const r=await ai(
+      [{role:"user",content:`Search for: ${query}
 
-  const buildSearchUrl=(site)=>{
-    const f=encodeURIComponent(from);
-    const t=encodeURIComponent(to);
-    const d=date||today;
-    const urls={
-      google:`https://www.google.com/travel/flights?q=flights+from+${f}+to+${t}`,
-      wakanow:`https://www.wakanow.com/en-NG/flights/search?origin=${f}&destination=${t}&departureDate=${d}&tripType=OneWay&adults=1`,
-      travelstart:`https://www.travelstart.com.ng/lp/search?from=${f}&to=${t}&date=${d}&adults=1`,
-      skyscanner:`https://www.skyscanner.net/transport/flights/${f.toLowerCase()}/${t.toLowerCase()}/${d.replace(/-/g,"")}/`,
-    };
-    return urls[site]||urls.google;
+Find available flights from ${from} to ${to}${date?" on "+dateStr:""}. List the airlines, prices in Naira, departure times, and duration. Also mention the cheapest option and best day to book. Be concise.`}],
+      `You are a Nigerian travel assistant. Search the web for current flight information. Present results in a clean, readable format with:
+- Available flights (airline, price, time, duration)
+- Cheapest option highlighted
+- Best day to book tip
+- Where to book (Wakanow, Travelstart, Google Flights)
+Use Nigerian Naira. Keep it short and practical.`
+    );
+    setResults(r);
+    setLoading(false);
   };
 
   return(
@@ -1755,56 +1752,31 @@ function TravelView({mem,save}) {
           <Icon name="map" size={18} color={C.accent}/>
           <h2 style={{fontSize:20,fontWeight:600,margin:0}}>Travel</h2>
         </div>
-        <p style={{color:C.textMuted,fontSize:13,margin:0}}>Search real prices on top Nigerian travel sites.</p>
+        <p style={{color:C.textMuted,fontSize:13,margin:0}}>Search for flights and get real pricing information.</p>
       </div>
 
       <Card style={{marginBottom:16}}>
         <div style={{display:"flex",gap:10,marginBottom:12,flexWrap:"wrap"}}>
           <div style={{flex:1,minWidth:120}}>
             <p style={{fontSize:11,color:C.textMuted,margin:"0 0 5px"}}>From</p>
-            <Input value={from} onChange={setFrom} placeholder="e.g. Abuja"/>
+            <Input value={from} onChange={setFrom} placeholder="e.g. Abuja" onKeyDown={e=>e.key==="Enter"&&search()}/>
           </div>
           <div style={{flex:1,minWidth:120}}>
             <p style={{fontSize:11,color:C.textMuted,margin:"0 0 5px"}}>To</p>
-            <Input value={to} onChange={setTo} placeholder="e.g. Lagos"/>
+            <Input value={to} onChange={setTo} placeholder="e.g. Lagos" onKeyDown={e=>e.key==="Enter"&&search()}/>
           </div>
           <div style={{flex:1,minWidth:120}}>
-            <p style={{fontSize:11,color:C.textMuted,margin:"0 0 5px"}}>Date</p>
+            <p style={{fontSize:11,color:C.textMuted,margin:"0 0 5px"}}>Date (optional)</p>
             <input type="date" value={date} min={today} onChange={e=>setDate(e.target.value)} style={{background:C.surface,border:"1px solid "+C.border,color:C.text,borderRadius:10,padding:"10px 12px",fontSize:13,fontFamily:"inherit",width:"100%",boxSizing:"border-box"}}/>
           </div>
         </div>
-
-        {from&&to&&<>
-          <p style={{fontSize:12,color:C.textMuted,margin:"0 0 10px"}}>Search on:</p>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
-            {[
-              {site:"google",label:"Google Flights",icon:"✈️",color:C.accent,desc:"Compare all airlines"},
-              {site:"wakanow",label:"Wakanow",icon:"🇳🇬",color:"#e85d04",desc:"Best Nigerian prices"},
-              {site:"travelstart",label:"Travelstart",icon:"🌍",color:"#2563eb",desc:"Flights & buses"},
-              {site:"skyscanner",label:"Skyscanner",icon:"🔍",color:"#0770e3",desc:"Global comparison"},
-            ].map(({site,label,icon,color,desc})=>(
-              <a key={site} href={buildSearchUrl(site)} target="_blank" rel="noreferrer"
-                style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",borderRadius:12,border:"1px solid "+C.border,background:C.surface,textDecoration:"none",cursor:"pointer",transition:"all 0.2s"}}>
-                <span style={{fontSize:22}}>{icon}</span>
-                <div>
-                  <p style={{margin:"0 0 2px",fontSize:13,fontWeight:600,color:C.text}}>{label}</p>
-                  <p style={{margin:0,fontSize:11,color:C.textMuted}}>{desc}</p>
-                </div>
-                <span style={{marginLeft:"auto",fontSize:12,color:color}}>↗</span>
-              </a>
-            ))}
-          </div>
-          <Btn variant="ghost" onClick={getTip} loading={loadingTip} size="sm" icon="sparkle">
-            Get Nia's travel tip for this route
-          </Btn>
-          {tip&&<div style={{marginTop:10,padding:"10px 14px",background:C.accentMid,borderRadius:10,border:"1px solid "+C.accent}}>
-            <p style={{margin:0,fontSize:13,color:C.text,lineHeight:1.6}}>✨ {tip}</p>
-          </div>}
-        </>}
+        <Btn variant="primary" onClick={search} loading={loading} style={{width:"100%",justifyContent:"center"}}>
+          {loading?"Searching flights...":"Search flights"}
+        </Btn>
       </Card>
 
       {/* Popular routes */}
-      <div style={{marginBottom:16}}>
+      {!results&&!loading&&<div style={{marginBottom:16}}>
         <p style={{fontSize:12,color:C.textMuted,margin:"0 0 8px"}}>Popular routes</p>
         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
           {POPULAR.map(([f,t])=>(
@@ -1813,25 +1785,40 @@ function TravelView({mem,save}) {
             </button>
           ))}
         </div>
-      </div>
+      </div>}
+
+      {/* Results */}
+      {results&&<Card style={{marginBottom:16}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+          <Icon name="map" size={16} color={C.accent}/>
+          <p style={{margin:0,fontSize:14,fontWeight:600}}>{from} → {to} {date&&"· "+new Date(date).toLocaleDateString("en-NG",{day:"numeric",month:"short"})}</p>
+          <button onClick={()=>setResults("")} style={{marginLeft:"auto",background:"none",border:"none",cursor:"pointer",color:C.textMuted,fontSize:12,fontFamily:"inherit"}}>Clear</button>
+        </div>
+        <div style={{fontSize:14,color:C.text,lineHeight:1.8,whiteSpace:"pre-wrap"}}>{results}</div>
+        <div style={{marginTop:14,paddingTop:14,borderTop:"1px solid "+C.border,display:"flex",gap:8,flexWrap:"wrap"}}>
+          <p style={{fontSize:11,color:C.textMuted,margin:"auto 0"}}>Book on:</p>
+          {[
+            ["Wakanow","https://www.wakanow.com/en-NG/flights"],
+            ["Travelstart","https://www.travelstart.com.ng"],
+            ["Google Flights","https://www.google.com/travel/flights"],
+          ].map(([name,url])=>(
+            <a key={name} href={url} target="_blank" rel="noreferrer" style={{padding:"5px 12px",borderRadius:99,fontSize:12,border:"1px solid "+C.border,color:C.accent,textDecoration:"none",background:C.accentMid,fontFamily:"inherit",fontWeight:500}}>
+              {name} ↗
+            </a>
+          ))}
+        </div>
+      </Card>}
 
       {/* Tips */}
-      <Card>
-        <p style={{fontSize:12,fontWeight:600,color:C.textMuted,margin:"0 0 10px",textTransform:"uppercase",letterSpacing:"0.05em"}}>✈️ Smart booking tips</p>
-        {[
-          "Book flights Tuesday–Thursday for cheapest fares",
-          "Book 3–6 weeks ahead for domestic flights",
-          "Night buses save you hotel costs on long routes",
-          "Air Peace and Ibom Air usually have the best domestic prices",
-          "GUO, ABC and Chisco are the most reliable bus operators",
-          "Lagos–Abuja flights spike on Friday evenings and Sunday nights",
-        ].map((t,i)=>(
-          <div key={i} style={{display:"flex",gap:8,marginBottom:8,alignItems:"flex-start"}}>
-            <span style={{color:C.accent,fontSize:14,marginTop:1}}>•</span>
-            <p style={{margin:0,fontSize:13,color:C.textMuted,lineHeight:1.5}}>{t}</p>
+      {!results&&!loading&&<Card>
+        <p style={{fontSize:12,fontWeight:600,color:C.textMuted,margin:"0 0 10px",textTransform:"uppercase",letterSpacing:"0.05em"}}>Quick tips</p>
+        {["Book Tue–Thu for cheapest fares","Book 3–6 weeks ahead for best prices","Air Peace and Ibom Air usually cheapest domestic","Night buses save hotel costs on long routes"].map((t,i)=>(
+          <div key={i} style={{display:"flex",gap:8,marginBottom:7,alignItems:"flex-start"}}>
+            <span style={{color:C.accent,marginTop:2}}>•</span>
+            <p style={{margin:0,fontSize:13,color:C.textMuted}}>{t}</p>
           </div>
         ))}
-      </Card>
+      </Card>}
     </div>
   );
 }
