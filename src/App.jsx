@@ -345,26 +345,22 @@ function Onboarding({onComplete}) {
   },[]);
   useEffect(()=>{bottomRef.current?.scrollIntoView({behavior:"smooth"});},[msgs]);
 
-  const next=async()=>{
-    const val=input.trim(); if(!val) return;
+  const next=()=>{
+    const val=input.trim(); if(!val||loading) return;
     const newA={...answers,[OQ[step].field]:val};
     setAnswers(newA);
     setMsgs(m=>[...m,{role:"user",text:val}]);
-    setInput(""); setLoading(true);
+    setInput("");
     const ns=step+1;
     if(ns<OQ.length){
+      setLoading(true);
       const q=OQ[ns].q;
       const txt=typeof q==="function"?q(newA):q;
-      setTimeout(()=>{ setMsgs(m=>[...m,{role:"nia",text:txt}]); speak(txt); setStep(ns); setLoading(false); },700);
+      setTimeout(()=>{ setMsgs(m=>[...m,{role:"nia",text:txt}]); speak(txt); setStep(ns); setLoading(false); },600);
     } else {
-      try {
-        const ext=await ai([{role:"user",content:`Extract goals, habits, reminders from: "${newA.goals_raw}"\nUser: ${JSON.stringify({name:newA.name,age:newA.age,marital:newA.marital,occupation:newA.occupation})}`}],EXTRACT_SYS);
-        let parsed={}; try{parsed=JSON.parse(ext.replace(/```json|```/g,"").trim());}catch{}
-        const close=`Perfect. I've got a clear picture now, ${newA.name}. I've noted everything you've shared and I'm ready to help you follow through. Let's go.`;
-        setMsgs(m=>[...m,{role:"nia",text:close}]); speak(close);
-        setTimeout(()=>onComplete({userName:newA.name,age:newA.age,marital:newA.marital,occupation:newA.occupation,goals:parsed.goals||[],habits:parsed.habits||[],reminders:parsed.reminders||[],notes:parsed.notes||[],onboarded:true,habitLogs:{},whatsappNumber:null,whatsappLogs:[]}),2500);
-      } catch { onComplete({userName:newA.name,age:newA.age,marital:newA.marital,occupation:newA.occupation,goals:[],habits:[],reminders:[],notes:[],onboarded:true,habitLogs:{},whatsappNumber:null,whatsappLogs:[]}); }
-      setLoading(false);
+      const close=`Perfect, ${newA.name}! I have everything I need. Let's get started. 🙏`;
+      setMsgs(m=>[...m,{role:"nia",text:close}]); speak(close);
+      setTimeout(()=>onComplete({userName:newA.name,age:newA.age,marital:newA.marital,occupation:newA.occupation,goals:[],habits:[],reminders:[],notes:[],onboarded:true,habitLogs:{},whatsappNumber:null,whatsappLogs:[]}),1500);
     }
   };
 
