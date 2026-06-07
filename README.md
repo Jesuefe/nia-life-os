@@ -5,7 +5,7 @@ Your personal AI life companion — coach, organizer, memory keeper, and account
 ## Features
 - AI Chat with memory extraction
 - Morning briefings
-- Goals & habit tracking
+- Goals & habit tracking 
 - Smart reminders
 - Health & self-care layer (water, medication, sleep, meals)
 - Brainstorm & research engine
