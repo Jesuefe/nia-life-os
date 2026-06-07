@@ -180,10 +180,19 @@ async function sendWhatsApp(phone, message) {
 }
 
 function scheduleWhatsAppReminder(reminder, phone, addLog) {
-  if (!phone || !reminder.when) return;
-  // In production this hits your Laravel scheduler endpoint
-  // Here we show it's queued and simulate delivery
-  addLog({ type: "whatsapp_queued", reminder: reminder.title, phone, when: reminder.when, ts: Date.now() });
+  if (!phone) return;
+  const when = (reminder.when||"").toLowerCase();
+  const isNow = !reminder.when || when.includes("now") || when.includes("today") || when.includes("tonight") || when.includes("immediately");
+  const delay = isNow ? 2000 : 5000;
+  // Log as queued first
+  addLog({ type: "whatsapp_queued", reminder: reminder.title, phone, when: reminder.when||"now", ts: Date.now() });
+  // Then actually send via Twilio
+  setTimeout(async()=>{
+    const msg = "⏰ Nia Reminder: " + reminder.title + (reminder.when ? " (" + reminder.when + ")" : "") + " — nia-life-os.pages.dev";
+    const result = await sendWhatsApp(phone, msg);
+    if(result.ok) addLog({ type: "whatsapp_sent", reminder: reminder.title, phone, ts: Date.now() });
+    else addLog({ type: "whatsapp_failed", reminder: reminder.title, error: result.error, ts: Date.now() });
+  }, delay);
 }
 
 // ─── HEALTH DECISION ENGINE ──────────────────────────────────────────────────
@@ -654,14 +663,17 @@ function ChatView({mem,save,msgs,addMsg,onOpenWA,user}) {
       const reply= askingCreator
         ? "I was built by Jesuefe Ramson, a young Nigerian developer and entrepreneur. He thought about me for months, planned me in 2 weeks, then built me in 2 months working an average of 16 hours a day. He deployed me on June 6th, 2026. Jesuefe also runs TGT Tech Hub and Showmine Entertainment. This is just the beginning. 🙏"
         : await ai(apiMsgs,sysPrompt);
+      // Always save conversation regardless of creator question
+      if(user?.id){
+        supabase.from("conversations").insert({user_id:user.id,role:"user",content:t}).then(()=>{});
+        supabase.from("conversations").insert({user_id:user.id,role:"assistant",content:reply}).then(()=>{});
+      }
       addMsg({role:"assistant",content:reply});
-      // Save assistant reply to Supabase
-      if(user?.id) supabase.from("conversations").insert({user_id:user.id,role:"assistant",content:reply}).then(()=>{});
       if(voiceOn) speak(reply);
       // Background extraction
       setTimeout(async()=>{
         try {
-          const conv=apiMsgs.slice(-6).map(m=>`${m.role}: ${m.content}`).join("\n");
+          const conv=[...apiMsgs.slice(-6),{role:"user",content:t},{role:"assistant",content:reply}].map(m=>`${m.role}: ${m.content}`).join("\n");
           const currentHealth=mem.health||{};
           const existing=JSON.stringify({goals:mem.goals,habits:mem.habits,reminders:mem.reminders,notes:mem.notes,health:{waterToday:currentHealth.waterToday||0,waterGoal:currentHealth.waterGoal||2.5,bpLog:currentHealth.bpLog||[],sugarLog:currentHealth.sugarLog||[]}});
           const raw=await ai([{role:"user",content:`Conv:\n${conv}\nNia reply: ${reply}\nExisting memory: ${existing}\nExtract new data.`}],EXTRACT_SYS);
@@ -770,7 +782,7 @@ function ChatView({mem,save,msgs,addMsg,onOpenWA,user}) {
               supabase.from("memories").upsert(syncData,{onConflict:"user_id"}).then(()=>{});
             }
           }
-        }catch{}
+        }catch(e){console.error("Extraction error:",e);}
       },100);
     }catch(e){
       const msg = e?.message?.includes("rate") || e?.message?.includes("429")
