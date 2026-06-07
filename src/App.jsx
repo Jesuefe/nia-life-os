@@ -117,7 +117,7 @@ Rules:
 - updateGoals: update progress on existing goals by ID
 - goals/habits/reminders: ONLY NEW items not already in memory
 - health: object with updates if user mentions health data:
-  - water: {waterToday: X} where X is in litres (convert: 75cl=0.75L, 500ml=0.5L, 1 bottle=0.5L, 1 glass=0.25L)
+  - water: {waterToday: X} where X is the AMOUNT JUST CONSUMED in litres (not total). Convert: 75cl=0.75, 500ml=0.5, 1 bottle=0.5, 1 glass=0.25, 1 cup=0.25, 200ml=0.2. IMPORTANT: return only the amount consumed this turn, NOT the running total.
   - bp: {bpLog: [{date:"today_date",systolic:120,diastolic:80,pulse:72,ts:timestamp}]} if user logs BP reading
   - sugar: {sugarLog: [{date:"today_date",level:5.5,unit:"mmol/L",context:"fasting|after_meal|random",ts:timestamp}]} if user logs blood sugar
   - else null
@@ -617,8 +617,9 @@ function ChatView({mem,save,msgs,addMsg,onOpenWA,user}) {
       setTimeout(async()=>{
         try {
           const conv=apiMsgs.slice(-6).map(m=>`${m.role}: ${m.content}`).join("\n");
-          const existing=JSON.stringify({goals:mem.goals,habits:mem.habits,reminders:mem.reminders,notes:mem.notes});
-          const raw=await ai([{role:"user",content:`Conv:\n${conv}\nNia reply: ${reply}\nExisting: ${existing}\nExtract new.`}],EXTRACT_SYS);
+          const currentHealth=mem.health||{};
+          const existing=JSON.stringify({goals:mem.goals,habits:mem.habits,reminders:mem.reminders,notes:mem.notes,health:{waterToday:currentHealth.waterToday||0,waterGoal:currentHealth.waterGoal||2.5,bpLog:currentHealth.bpLog||[],sugarLog:currentHealth.sugarLog||[]}});
+          const raw=await ai([{role:"user",content:`Conv:\n${conv}\nNia reply: ${reply}\nExisting memory: ${existing}\nExtract new data.`}],EXTRACT_SYS);
           const p=JSON.parse(raw.replace(/```json|```/g,"").trim());
           const u={};
           // Add new items
@@ -638,8 +639,27 @@ function ChatView({mem,save,msgs,addMsg,onOpenWA,user}) {
           if(p.deleteReminders?.length){ const ds=new Set(p.deleteReminders); u.reminders=(u.reminders||mem.reminders).filter(r=>!ds.has(r.id)); }
           // Update goal progress
           if(p.updateGoals?.length){ const updates={}; p.updateGoals.forEach(g=>{updates[g.id]=g.progress;}); u.goals=(u.goals||mem.goals).map(g=>updates[g.id]!==undefined?{...g,progress:updates[g.id]}:g); }
-          // Health updates from chat
-          if(p.health){ u.health={...(mem.health||{}), ...p.health}; }
+          // Health updates from chat — smart merge
+          if(p.health){
+            const curHealth=mem.health||{};
+            const newHealth={...curHealth};
+            // Water: ADD to existing today's total, don't replace
+            if(p.health.waterToday!==undefined){
+              newHealth.waterToday=parseFloat(((curHealth.waterToday||0)+p.health.waterToday).toFixed(2));
+              newHealth.waterLog=[...(curHealth.waterLog||[]),{ts:Date.now(),ml:Math.round(p.health.waterToday*1000),date:new Date().toDateString()}];
+            }
+            // BP: append new reading
+            if(p.health.bpLog?.length){
+              newHealth.bpLog=[...(curHealth.bpLog||[]),...p.health.bpLog];
+            }
+            // Sugar: append new reading
+            if(p.health.sugarLog?.length){
+              newHealth.sugarLog=[...(curHealth.sugarLog||[]),...p.health.sugarLog];
+            }
+            // Medication logs
+            if(p.health.medLogs){ newHealth.medLogs={...(curHealth.medLogs||{}),...p.health.medLogs}; }
+            u.health=newHealth;
+          }
           // Mark done
           if(p.markDone?.length){
             const ds=new Set(p.markDone);
