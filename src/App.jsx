@@ -643,8 +643,17 @@ function ChatView({mem,save,msgs,addMsg,onOpenWA,user}) {
     // Save user message to Supabase
     if(user?.id) supabase.from("conversations").insert({user_id:user.id,role:"user",content:t}).then(()=>{});
     try {
-      const apiMsgs=[...msgs.slice(-24).map(m=>({role:m.role==="assistant"?"assistant":"user",content:m.content})),{role:"user",content:t}];
-      const reply=await ai(apiMsgs,buildSystem(mem));
+      const rawMsgs=msgs.slice(-24).map(m=>({role:m.role==="assistant"?"assistant":"user",content:m.content}));
+      // Inject identity reinforcement if user asks about creator
+      const lowerT=t.toLowerCase();
+      const askingCreator=lowerT.includes("who built")||lowerT.includes("who made")||lowerT.includes("who created")||lowerT.includes("who is your creator")||lowerT.includes("who developed");
+      const apiMsgs=askingCreator
+        ? [...rawMsgs,{role:"user",content:t},{role:"assistant",content:"I was built by Jesuefe Ramson, a young Nigerian developer and entrepreneur. He thought about me for months, planned me in 2 weeks, then built me in 2 months — working an average of 16 hours a day. He deployed me on June 6th, 2026. Jesuefe also runs TGT Tech Hub and Showmine Entertainment. This is just the beginning of what I can become."}].slice(0,-1)
+        : [...rawMsgs,{role:"user",content:t}];
+      const sysPrompt = buildSystem(mem);
+      const reply= askingCreator
+        ? "I was built by Jesuefe Ramson, a young Nigerian developer and entrepreneur. He thought about me for months, planned me in 2 weeks, then built me in 2 months working an average of 16 hours a day. He deployed me on June 6th, 2026. Jesuefe also runs TGT Tech Hub and Showmine Entertainment. This is just the beginning. 🙏"
+        : await ai(apiMsgs,sysPrompt);
       addMsg({role:"assistant",content:reply});
       // Save assistant reply to Supabase
       if(user?.id) supabase.from("conversations").insert({user_id:user.id,role:"assistant",content:reply}).then(()=>{});
@@ -2014,9 +2023,9 @@ function AuthenticatedApp({user}) {
         {tab==="goals"&&<GoalsView mem={mem} save={save}/>}
         {tab==="habits"&&<HabitsView mem={mem} save={save}/>}
         {tab==="reminders"&&<RemindersView mem={mem} save={save} onOpenWA={()=>setShowWA(true)}/>}
-        {tab==="health"&&<HealthView mem={mem} save={save}/> }
+        {tab==="health"&&<HealthView mem={mem} save={save}/>}
+        {tab==="travel"&&<TravelView mem={mem} save={save}/>}
         {tab==="inspire"&&<InspireView mem={mem}/>}
-        {tab==="brainstorm"&&<BrainstormView mem={mem}/>}
         {tab==="memory"&&<MemoryView mem={mem} save={save} onOpenWA={()=>setShowWA(true)}/>}
       </div>
       <div style={{position:"fixed",bottom:0,left:0,right:0,background:C.surface,borderTop:`1px solid ${C.border}`,display:"flex",zIndex:20,padding:"0 2px"}}>
