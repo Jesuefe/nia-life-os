@@ -102,9 +102,12 @@ TASK AUTO-MANAGEMENT:
 - Auto-create reminders for one-time things, habits for recurring
 - Confirm all actions clearly
 
-WHATSAPP REMINDERS:
-- If whatsappNumber is set, confirm WhatsApp reminders are queued
-- If not set, suggest connecting in Settings
+WHATSAPP:
+- whatsappNumber in memory = connected. You CAN send real WhatsApp messages.
+- For immediate messages: extraction will pick up whatsappNow and send instantly
+- Say "Sending to your WhatsApp now..." when user asks for immediate notification
+- For scheduled reminders: create a reminder with whatsapp:true
+- If not connected: suggest they connect in Memory tab
 
 RESPONSE FORMAT: Conversational, max 3 paragraphs, end with question or encouraging close`;
 };
@@ -125,7 +128,8 @@ Other rules:
 - deleteGoals/deleteHabits/deleteReminders: IDs to delete
 - Only NEW goals/habits/reminders not already in memory
 - null for anything not mentioned this turn
-- whatsapp:true if user says "remind me on WhatsApp"`;
+- whatsapp:true if user says "remind me on WhatsApp"
+- whatsappNow: "message text" if user asks to send an immediate WhatsApp notification/message now`;
 
 const BRAINSTORM_SYS = `You are Nia's Research & Brainstorm engine. The user needs help with a topic.
 Respond in this exact JSON format (no fences):
@@ -710,6 +714,13 @@ function ChatView({mem,save,msgs,addMsg,onOpenWA,user}) {
             u.habits=(u.habits||mem.habits).map(h=>{ if(!ds.has(h.id)) return h; logs[`${h.id}_${today}`]=true; return {...h,streak:(h.streak||0)+1,lastDone:today}; });
             u.habitLogs=logs;
             u.reminders=(u.reminders||mem.reminders).map(r=>ds.has(r.id)?{...r,done:true}:r);
+          }
+          // Send immediate WhatsApp if requested
+          if(p.whatsappNow&&mem.whatsappNumber){
+            sendWhatsApp(mem.whatsappNumber, p.whatsappNow).then(r=>{
+              if(r.ok) addMsg({role:"assistant",content:"✅ WhatsApp sent to "+mem.whatsappNumber});
+              else addMsg({role:"assistant",content:"⚠️ WhatsApp failed: "+r.error});
+            });
           }
           if(Object.keys(u).length){
             save(u);
@@ -1481,32 +1492,68 @@ ${healthReport}`],{type:"text/plain"});const a=document.createElement("a");a.hre
 // ─── INSPIRE VIEW ────────────────────────────────────────────────────────────
 function InspireView({mem}) {
   const [cards,setCards]=useState([]);
-  const [loading,setLoading]=useState(false);
   const [genLoading,setGenLoading]=useState(null);
 
   const CATEGORIES=[
-    {id:"money",label:"Money",prompt:"motivational money wealth success quote golden coins luxury dark background cinematic"},
-    {id:"morning",label:"Good Morning",prompt:"good morning sunrise motivational quote beautiful golden light peaceful inspiring"},
-    {id:"hustle",label:"Hustle",prompt:"hustle grind success entrepreneur motivational dark dramatic cinematic quote background"},
-    {id:"health",label:"Health",prompt:"health wellness fitness motivation nature green energy vibrant inspiring"},
-    {id:"mindset",label:"Mindset",prompt:"mindset growth positive thinking brain universe galaxy motivational dark background"},
-    {id:"faith",label:"Faith",prompt:"faith hope spiritual light divine motivational peaceful golden rays inspiring"},
-    {id:"love",label:"Love",prompt:"love heart warmth relationship motivation soft colors beautiful inspiring"},
-    {id:"nigeria",label:"Naija",prompt:"african success motivation vibrant colors nigeria africa inspiring entrepreneur"},
+    {id:"money",label:"Money",emoji:"💰",colors:["#1a0533","#4a1060","#7c3aed"],accent:"#f0c040"},
+    {id:"morning",label:"Morning",emoji:"🌅",colors:["#0c1a2e","#1e3a5f","#f97316"],accent:"#fde68a"},
+    {id:"hustle",label:"Hustle",emoji:"🔥",colors:["#1a0a00","#7c2d12","#dc2626"],accent:"#fb923c"},
+    {id:"mindset",label:"Mindset",emoji:"🧠",colors:["#030712","#1e1b4b","#4f46e5"],accent:"#a5b4fc"},
+    {id:"faith",label:"Faith",emoji:"✨",colors:["#0f172a","#0c2340","#0284c7"],accent:"#e0f2fe"},
+    {id:"health",label:"Health",emoji:"💪",colors:["#052e16","#14532d","#15803d"],accent:"#bbf7d0"},
+    {id:"love",label:"Love",emoji:"❤️",colors:["#1a0014","#7c0d3e","#db2777"],accent:"#fce7f3"},
+    {id:"naija",label:"Naija",emoji:"🇳🇬",colors:["#052e16","#14532d","#16a34a"],accent:"#fde68a"},
   ];
 
   const getQuote=async(category)=>{
-    const r=await ai([{role:"user",content:`Give me one powerful ${category} motivational quote. Max 15 words. No author name. Just the quote.`}],"You give short powerful motivational quotes. Return ONLY the quote text, nothing else.");
-    return r.trim().replace(/^["']|["']$/g,"");
+    const r=await ai([{role:"user",content:"Give me one powerful "+category+" motivational quote. Max 12 words. Bold and punchy. No author. Just the quote."}],"Return ONLY the quote text. No quotation marks. No explanation.");
+    return r.trim().replace(/^["“‘]|["”’]$/g,"");
   };
+
+  const drawCard=(cat,quote)=>new Promise(resolve=>{
+    const canvas=document.createElement("canvas");
+    canvas.width=600; canvas.height=600;
+    const ctx=canvas.getContext("2d");
+    const [c1,c2,c3]=cat.colors;
+    const grad=ctx.createLinearGradient(0,0,600,600);
+    grad.addColorStop(0,c1); grad.addColorStop(0.5,c2); grad.addColorStop(1,c3);
+    ctx.fillStyle=grad; ctx.fillRect(0,0,600,600);
+    ctx.globalAlpha=0.08; ctx.fillStyle=cat.accent;
+    ctx.beginPath(); ctx.arc(500,100,200,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(50,500,150,0,Math.PI*2); ctx.fill();
+    ctx.globalAlpha=1;
+    ctx.strokeStyle=cat.accent; ctx.lineWidth=3; ctx.globalAlpha=0.6;
+    ctx.beginPath(); ctx.moveTo(52,325); ctx.lineTo(160,325); ctx.stroke();
+    ctx.globalAlpha=1;
+    ctx.font="60px serif"; ctx.textAlign="left";
+    ctx.fillText(cat.emoji,48,115);
+    ctx.fillStyle="#ffffff"; ctx.font="bold 36px Arial,sans-serif"; ctx.textAlign="left";
+    ctx.shadowColor="rgba(0,0,0,0.6)"; ctx.shadowBlur=10;
+    const words=quote.split(" "); let lines=[]; let line="";
+    words.forEach(w=>{
+      const test=line?line+" "+w:w;
+      if(ctx.measureText(test).width>480&&line){lines.push(line);line=w;}
+      else line=test;
+    });
+    if(line) lines.push(line);
+    const startY=310-(lines.length*26);
+    lines.forEach((l,i)=>ctx.fillText(l,52,startY+(i*54)));
+    ctx.shadowBlur=0;
+    ctx.font="500 14px Arial,sans-serif"; ctx.fillStyle=cat.accent; ctx.globalAlpha=0.85;
+    ctx.fillText(cat.label.toUpperCase(),52,560);
+    ctx.textAlign="right"; ctx.font="12px Arial,sans-serif";
+    ctx.fillStyle="rgba(255,255,255,0.3)";
+    ctx.fillText("Nia Life OS",548,580);
+    ctx.globalAlpha=1;
+    resolve(canvas.toDataURL("image/png"));
+  });
 
   const generate=async(cat)=>{
     setGenLoading(cat.id);
     try{
       const quote=await getQuote(cat.label);
-      const encodedPrompt=encodeURIComponent(`${cat.prompt}, with text overlay saying "${quote}", professional motivational poster`);
-      const imgUrl=`https://image.pollinations.ai/prompt/${encodedPrompt}?width=800&height=800&seed=${Date.now()}&nologo=true`;
-      setCards(prev=>[{id:Date.now(),quote,category:cat.label,imgUrl,prompt:cat.prompt},  ...prev].slice(0,12));
+      const imgUrl=await drawCard(cat,quote);
+      setCards(prev=>[{id:Date.now(),quote,category:cat.label,imgUrl,catId:cat.id},...prev].slice(0,12));
     }catch(e){console.error(e);}
     setGenLoading(null);
   };
@@ -1514,8 +1561,7 @@ function InspireView({mem}) {
   const download=(card)=>{
     const a=document.createElement("a");
     a.href=card.imgUrl;
-    a.download=`nia-inspire-${card.category}.jpg`;
-    a.target="_blank";
+    a.download="nia-inspire-"+Date.now()+".png";
     a.click();
   };
 
@@ -1526,39 +1572,31 @@ function InspireView({mem}) {
           <Icon name="image" size={18} color={C.pink}/>
           <h2 style={{fontSize:20,fontWeight:600,margin:0}}>Inspire</h2>
         </div>
-        <p style={{color:C.textMuted,fontSize:13,margin:0}}>AI-generated motivational image cards. Tap a category to generate.</p>
+        <p style={{color:C.textMuted,fontSize:13,margin:0}}>AI quote cards generated instantly — no internet needed. Tap a category.</p>
       </div>
-
       <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:20}}>
         {CATEGORIES.map(cat=>(
-          <button key={cat.id} onClick={()=>generate(cat)} disabled={genLoading===cat.id} style={{padding:"8px 14px",borderRadius:99,fontSize:13,fontWeight:500,cursor:genLoading===cat.id?"not-allowed":"pointer",fontFamily:"inherit",border:`1px solid ${C.border}`,background:genLoading===cat.id?C.accentMid:"transparent",color:genLoading===cat.id?C.accent:C.textMuted,transition:"all 0.2s",display:"flex",alignItems:"center",gap:6}}>
-            {genLoading===cat.id&&<span style={{width:10,height:10,border:`2px solid ${C.accent}`,borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.7s linear infinite",display:"inline-block"}}/>}
-            {cat.label}
+          <button key={cat.id} onClick={()=>generate(cat)} disabled={!!genLoading} style={{padding:"8px 14px",borderRadius:99,fontSize:13,fontWeight:500,cursor:genLoading?"not-allowed":"pointer",fontFamily:"inherit",border:"1px solid "+C.border,background:genLoading===cat.id?C.accentMid:"transparent",color:genLoading===cat.id?C.accent:C.textMuted,transition:"all 0.2s",display:"flex",alignItems:"center",gap:6}}>
+            {genLoading===cat.id&&<span style={{width:10,height:10,border:"2px solid "+C.accent,borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.7s linear infinite",display:"inline-block"}}/>}
+            {cat.emoji} {cat.label}
           </button>
         ))}
       </div>
-
       {cards.length===0&&!genLoading&&(
         <Card style={{textAlign:"center",padding:"48px 24px"}}>
-          <div style={{display:"flex",justifyContent:"center",marginBottom:14}}><Icon name="image" size={40} color={C.textDim}/></div>
+          <div style={{fontSize:40,marginBottom:14}}>✨</div>
           <p style={{fontSize:15,color:C.textMuted,margin:"0 0 6px"}}>Pick a category above</p>
-          <p style={{fontSize:13,color:C.textDim,margin:0}}>Nia will generate a motivational image card with a quote for you</p>
+          <p style={{fontSize:13,color:C.textDim,margin:0}}>Nia writes the quote and draws a beautiful card instantly</p>
         </Card>
       )}
-
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:14}}>
         {cards.map(card=>(
-          <div key={card.id} style={{borderRadius:14,overflow:"hidden",border:`1px solid ${C.border}`,background:C.card,position:"relative"}}>
-            <div style={{position:"relative",paddingTop:"100%",background:C.surface}}>
-              <img src={card.imgUrl} alt={card.quote} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}} onError={e=>{e.target.style.display="none";}}/>
-              <div style={{position:"absolute",inset:0,background:"linear-gradient(to top,rgba(0,0,0,0.8) 0%,transparent 60%)",display:"flex",alignItems:"flex-end",padding:14}}>
-                <p style={{margin:0,fontSize:13,fontWeight:600,color:"#fff",lineHeight:1.5,textShadow:"0 1px 4px rgba(0,0,0,0.8)"}}>&ldquo;{card.quote}&rdquo;</p>
-              </div>
-            </div>
+          <div key={card.id} style={{borderRadius:14,overflow:"hidden",border:"1px solid "+C.border,background:C.card}}>
+            <img src={card.imgUrl} alt={card.quote} style={{width:"100%",display:"block"}}/>
             <div style={{padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
               <span style={{fontSize:11,color:C.textMuted}}>{card.category}</span>
               <div style={{display:"flex",gap:8}}>
-                <button onClick={()=>generate(CATEGORIES.find(c=>c.label===card.category)||CATEGORIES[0])} style={{background:"none",border:"none",cursor:"pointer",color:C.textMuted,fontSize:11,display:"flex",alignItems:"center",gap:4,fontFamily:"inherit"}}><Icon name="refresh" size={12} color={C.textMuted}/>New</button>
+                <button onClick={()=>generate(CATEGORIES.find(c=>c.id===card.catId)||CATEGORIES[0])} style={{background:"none",border:"none",cursor:"pointer",color:C.textMuted,fontSize:11,display:"flex",alignItems:"center",gap:4,fontFamily:"inherit"}}><Icon name="refresh" size={12} color={C.textMuted}/>New</button>
                 <button onClick={()=>download(card)} style={{background:"none",border:"none",cursor:"pointer",color:C.accent,fontSize:11,display:"flex",alignItems:"center",gap:4,fontFamily:"inherit"}}><Icon name="download" size={12} color={C.accent}/>Save</button>
               </div>
             </div>
