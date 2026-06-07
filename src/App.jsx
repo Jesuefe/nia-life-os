@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { useState, useEffect, useRef, useCallback } from "react";
 
-const API = "/.netlify/functions/ai";
+const API = "/ai";
 const MODEL = "llama-3.3-70b-versatile";
 
 // ─── SUPABASE ───────────────────────────────────────────────────────────────
@@ -118,7 +118,7 @@ Health rules — extract if user mentions:
 - Blood sugar: health.sugarLog = [{level:X,unit:"mmol/L",context:"fasting|after_meal|random",ts:Date.now(),date:"today"}]
 - Sleep time: health.sleepLog = [{time:"23:00",ts:Date.now(),date:"today"}] — parse from "slept at 11pm", "went to bed at midnight" etc
 - Meal logged: health.mealLog = [{meal:"Breakfast|Lunch|Dinner|Snack",ts:Date.now(),date:"today"}]
-- Medication taken: health.medDone = true
+- Medication taken: health.medTaken = {name: "medication name or 'medication' if unknown", time: "now"} — extract the medication name if mentioned (e.g. "ulcer medication", "metformin", "my bp drugs")
 
 Other rules:
 - markDone: IDs completed this turn
@@ -648,8 +648,9 @@ function ChatView({mem,save,msgs,addMsg,onOpenWA,user}) {
             const today=new Date().toDateString();
             const newHealth={...curHealth, enabled:true};
             // Water: ADD to today's total
-            if(p.health.waterToday!==undefined){
-              newHealth.waterToday=parseFloat(((curHealth.waterToday||0)+p.health.waterToday).toFixed(2));
+            if(p.health.waterToday!==undefined && p.health.waterToday>0 && p.health.waterToday<=5){
+              const newTotal=parseFloat(((curHealth.waterToday||0)+p.health.waterToday).toFixed(2));
+              newHealth.waterToday=Math.min(newTotal,10); // cap at 10L sanity check
               newHealth.waterLog=[...(curHealth.waterLog||[]),{ts:Date.now(),ml:Math.round(p.health.waterToday*1000),date:today}];
             }
             // BP: append
@@ -670,11 +671,21 @@ function ChatView({mem,save,msgs,addMsg,onOpenWA,user}) {
               const newMeals=p.health.mealLog.filter(m=>!existing.find(e=>e.meal===m.meal&&e.date===today));
               newHealth.mealLog=[...existing,...newMeals.map(m=>({...m,ts:m.ts||Date.now(),date:m.date||today}))];
             }
-            // Medication done
-            if(p.health.medDone){
-              const todayKey=today.replace(/\s/g,"_");
+            // Medication taken from chat
+            if(p.health.medTaken){
+              const medName=p.health.medTaken.name||"Medication";
+              const todayKey=today.replace(/ /g,"_");
               const logs={...(curHealth.medLogs||{})};
-              (curHealth.medications||[]).forEach(med=>{ logs[`${med.id}_${todayKey}`]=true; });
+              let meds=[...(curHealth.medications||[])];
+              // Find existing med or create one
+              let med=meds.find(m=>m.name.toLowerCase().includes(medName.toLowerCase())||medName.toLowerCase().includes(m.name.toLowerCase()));
+              if(!med){
+                med={id:`med_${Date.now()}`,name:medName,time:"as needed"};
+                meds=[...meds,med];
+                newHealth.medications=meds;
+                newHealth.medicationEnabled=true;
+              }
+              logs[`${med.id}_${todayKey}`]=true;
               newHealth.medLogs=logs;
             }
             u.health=newHealth;
@@ -1033,6 +1044,15 @@ function MemoryView({mem,save,onOpenWA}) {
 function HealthView({ mem, save }) {
   const h = mem.health || HEALTH_DEF;
   const saveH = (u) => save({ health: { ...h, ...u } });
+  // Auto-reset water if it's a new day
+  useEffect(()=>{
+    if(h.waterLog?.length){
+      const lastLog=h.waterLog[h.waterLog.length-1];
+      if(lastLog&&lastLog.date&&lastLog.date!==new Date().toDateString()){
+        saveH({waterToday:0,waterLog:[]});
+      }
+    }
+  },[]);
 
   const [nudgeMsg, setNudgeMsg] = useState("");
   const [nudgeType, setNudgeType] = useState("");
@@ -1351,8 +1371,8 @@ function HealthView({ mem, save }) {
           </div>}
           {(h.bpLog||[]).length>0&&<div style={{display:"flex",flexDirection:"column",gap:6}}>
             {(h.bpLog||[]).slice(-5).reverse().map((r,i)=>{
-              const cat=r.systolic>=140||r.diastolic>=90?"High":r.systolic>=120||r.diastolic>=80?"Elevated":"Normal";
-              const catColor=cat==="High"?C.danger:cat==="Elevated"?C.warn:C.success;
+              const cat=r.diastolic<60?"Low — check with doctor":r.systolic>=140||r.diastolic>=90?"High":r.systolic>=130||r.diastolic>=80?"Elevated":"Normal";
+              const catColor=cat==="High"?C.danger:cat==="Elevated"?C.warn:cat.startsWith("Low")?C.pink:C.success;
               return<div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",background:C.surface,borderRadius:10,border:`1px solid ${C.border}`}}>
                 <div style={{flex:1}}>
                   <p style={{margin:"0 0 2px",fontSize:15,fontWeight:700,color:C.text}}>{r.systolic}/{r.diastolic} <span style={{fontSize:12,fontWeight:400,color:C.textMuted}}>mmHg{r.pulse?` · ${r.pulse} bpm`:""}</span></p>
