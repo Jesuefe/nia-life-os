@@ -1618,8 +1618,6 @@ function AuthenticatedApp({user}) {
       if(m) save({goals:m.goals||[],habits:m.habits||[],reminders:m.reminders||[],notes:m.notes||[],habitLogs:m.habit_logs||{},health:m.health||{},whatsappLogs:m.whatsapp_logs||[]});
       const {data:p}=await supabase.from("profiles").select("*").eq("id",user.id).single();
       if(p) save({userName:p.name,age:p.age,marital:p.marital_status,occupation:p.occupation,whatsappNumber:p.whatsapp_number,onboarded:p.onboarded||false,plan:p.plan||"free"});
-    };
-      // Load conversations from Supabase
       const {data:convos}=await supabase.from("conversations").select("id,role,content,created_at").eq("user_id",user.id).order("created_at",{ascending:true}).limit(80);
       if(convos?.length){ window.__niaMsgs=convos.map(c=>({...c,ts:c.created_at})); }
     };
