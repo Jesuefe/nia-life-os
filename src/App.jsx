@@ -676,20 +676,23 @@ function ChatView({mem,save,msgs,addMsg,onOpenWA,user}) {
           const conv=[...apiMsgs.slice(-6),{role:"user",content:t},{role:"assistant",content:reply}].map(m=>`${m.role}: ${m.content}`).join("\n");
           const currentHealth=mem.health||{};
           const existing=JSON.stringify({goals:mem.goals,habits:mem.habits,reminders:mem.reminders,notes:mem.notes,health:{waterToday:currentHealth.waterToday||0,waterGoal:currentHealth.waterGoal||2.5,bpLog:currentHealth.bpLog||[],sugarLog:currentHealth.sugarLog||[]}});
-          const extractPrompt = `Conversation:
-${conv}
+          // Only extract from USER messages - never from Nia's replies
+          const userMessages=apiMsgs.filter(m=>m.role==="user").slice(-3).map(m=>m.content).join("\n");
+          const extractPrompt = `User said: "${t}"
 
-Nia reply: ${reply}
+Recent user messages:
+${userMessages}
 
 Existing memory: ${existing}
 
-Extract any NEW goals, habits, reminders, or health data mentioned. Rules:
-- goals: only if user explicitly mentions a goal/target/aim
-- habits: only if user mentions recurring activity
-- reminders: only if user asks to be reminded of something - MUST have title
-- health: only if user mentions water/BP/sugar/sleep/meals/medication
-- Return ONLY the JSON object, no explanation, no markdown fences
-- Every item MUST have a non-empty title or it will be rejected`;
+Extract ONLY what the USER explicitly stated. Rules:
+- goals: ONLY if user says "I want to", "my goal is", "I aim to" — NOT what Nia suggested
+- habits: ONLY if user says they do something regularly
+- reminders: ONLY if user says "remind me to [specific thing]" — title must be the thing to be reminded about, NOT a question
+- health: ONLY if user says "I drank", "my BP is", "I slept", "I ate", "I took medication"
+- health.waterGoal: NEVER change this unless user explicitly says "change my water goal to X"
+- NEVER extract Nia's questions or suggestions as reminders or goals
+- Return ONLY the JSON, no explanation`;
 
           const raw=await ai([{role:"user",content:extractPrompt}],EXTRACT_SYS);
           // Clean up Gemini/Groq response - strip markdown, find JSON
@@ -701,14 +704,33 @@ Extract any NEW goals, habits, reminders, or health data mentioned. Rules:
           const p=JSON.parse(cleanRaw);
           const u={};
           // Add new items
-          if(p.goals?.length){ const validGoals=p.goals.filter(g=>g.title&&g.title.trim().length>0); if(validGoals.length) u.goals=mergeById(mem.goals,validGoals); }
+          if(p.goals?.length){
+            const validGoals=p.goals.filter(g=>g.title&&g.title.trim().length>0);
+            if(validGoals.length){
+              // Deduplicate by title (case insensitive)
+              const existingTitles=new Set((mem.goals||[]).map(g=>g.title.toLowerCase().trim()));
+              const newOnly=validGoals.filter(g=>!existingTitles.has(g.title.toLowerCase().trim()));
+              if(newOnly.length) u.goals=mergeById(mem.goals,newOnly);
+            }
+          }
           if(p.habits?.length) u.habits=mergeById(mem.habits,p.habits);
           if(p.reminders?.length){
-            const validRems=p.reminders.filter(r=>r.title&&r.title.trim().length>0);
+            const validRems=p.reminders.filter(r=>{
+              if(!r.title||r.title.trim().length<3) return false;
+              // Reject if title looks like a question or Nia's text
+              if(r.title.trim().endsWith("?")) return false;
+              if(r.title.toLowerCase().includes("nia reply")) return false;
+              if(r.title.toLowerCase().includes("how many")) return false;
+              if(r.title.toLowerCase().includes("have you")) return false;
+              return true;
+            });
             if(validRems.length){
-              const newRems=validRems.filter(r=>!mem.reminders.find(e=>e.id===r.id));
-              u.reminders=mergeById(mem.reminders,validRems);
-              if(mem.whatsappNumber){ newRems.filter(r=>r.whatsapp).forEach(r=>scheduleWhatsAppReminder(r,mem.whatsappNumber,(log)=>save({whatsappLogs:[...(mem.whatsappLogs||[]),log]}))); }
+              const existingTitles=new Set((mem.reminders||[]).map(r=>r.title.toLowerCase().trim()));
+              const newRems=validRems.filter(r=>!existingTitles.has(r.title.toLowerCase().trim()));
+              if(newRems.length){
+                u.reminders=[...(mem.reminders||[]),...newRems];
+                if(mem.whatsappNumber){ newRems.filter(r=>r.whatsapp).forEach(r=>scheduleWhatsAppReminder(r,mem.whatsappNumber,(log)=>save({whatsappLogs:[...(mem.whatsappLogs||[]),log]}))); }
+              }
             }
           }
           if(p.notes?.length) u.notes=[...new Set([...(mem.notes||[]),...p.notes])].slice(-30);
@@ -728,9 +750,11 @@ Extract any NEW goals, habits, reminders, or health data mentioned. Rules:
             // Water: ADD to today's total
             if(p.health.waterToday!==undefined && p.health.waterToday>0 && p.health.waterToday<=5){
               const newTotal=parseFloat(((curHealth.waterToday||0)+p.health.waterToday).toFixed(2));
-              newHealth.waterToday=Math.min(newTotal,10); // cap at 10L sanity check
+              newHealth.waterToday=Math.min(newTotal,10);
               newHealth.waterLog=[...(curHealth.waterLog||[]),{ts:Date.now(),ml:Math.round(p.health.waterToday*1000),date:today}];
             }
+            // NEVER let extraction change waterGoal
+            if(p.health.waterGoal!==undefined) delete p.health.waterGoal;
             // BP: append
             if(p.health.bpLog?.length){
               newHealth.bpLog=[...(curHealth.bpLog||[]),...p.health.bpLog.map(r=>({...r,ts:r.ts||Date.now(),date:r.date||today}))];
