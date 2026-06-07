@@ -676,16 +676,40 @@ function ChatView({mem,save,msgs,addMsg,onOpenWA,user}) {
           const conv=[...apiMsgs.slice(-6),{role:"user",content:t},{role:"assistant",content:reply}].map(m=>`${m.role}: ${m.content}`).join("\n");
           const currentHealth=mem.health||{};
           const existing=JSON.stringify({goals:mem.goals,habits:mem.habits,reminders:mem.reminders,notes:mem.notes,health:{waterToday:currentHealth.waterToday||0,waterGoal:currentHealth.waterGoal||2.5,bpLog:currentHealth.bpLog||[],sugarLog:currentHealth.sugarLog||[]}});
-          const raw=await ai([{role:"user",content:`Conv:\n${conv}\nNia reply: ${reply}\nExisting memory: ${existing}\nExtract new data.`}],EXTRACT_SYS);
-          const p=JSON.parse(raw.replace(/```json|```/g,"").trim());
+          const extractPrompt = `Conversation:
+${conv}
+
+Nia reply: ${reply}
+
+Existing memory: ${existing}
+
+Extract any NEW goals, habits, reminders, or health data mentioned. Rules:
+- goals: only if user explicitly mentions a goal/target/aim
+- habits: only if user mentions recurring activity
+- reminders: only if user asks to be reminded of something - MUST have title
+- health: only if user mentions water/BP/sugar/sleep/meals/medication
+- Return ONLY the JSON object, no explanation, no markdown fences
+- Every item MUST have a non-empty title or it will be rejected`;
+
+          const raw=await ai([{role:"user",content:extractPrompt}],EXTRACT_SYS);
+          // Clean up Gemini/Groq response - strip markdown, find JSON
+          let cleanRaw = raw.replace(/```json|```/g,"").trim();
+          // Find the JSON object if wrapped in text
+          const jsonStart = cleanRaw.indexOf('{');
+          const jsonEnd = cleanRaw.lastIndexOf('}');
+          if(jsonStart > -1 && jsonEnd > -1) cleanRaw = cleanRaw.slice(jsonStart, jsonEnd+1);
+          const p=JSON.parse(cleanRaw);
           const u={};
           // Add new items
-          if(p.goals?.length) u.goals=mergeById(mem.goals,p.goals);
+          if(p.goals?.length){ const validGoals=p.goals.filter(g=>g.title&&g.title.trim().length>0); if(validGoals.length) u.goals=mergeById(mem.goals,validGoals); }
           if(p.habits?.length) u.habits=mergeById(mem.habits,p.habits);
           if(p.reminders?.length){
-            const newRems=p.reminders.filter(r=>!mem.reminders.find(e=>e.id===r.id));
-            u.reminders=mergeById(mem.reminders,p.reminders);
-            if(mem.whatsappNumber){ newRems.filter(r=>r.whatsapp).forEach(r=>scheduleWhatsAppReminder(r,mem.whatsappNumber,(log)=>save({whatsappLogs:[...(mem.whatsappLogs||[]),log]}))); }
+            const validRems=p.reminders.filter(r=>r.title&&r.title.trim().length>0);
+            if(validRems.length){
+              const newRems=validRems.filter(r=>!mem.reminders.find(e=>e.id===r.id));
+              u.reminders=mergeById(mem.reminders,validRems);
+              if(mem.whatsappNumber){ newRems.filter(r=>r.whatsapp).forEach(r=>scheduleWhatsAppReminder(r,mem.whatsappNumber,(log)=>save({whatsappLogs:[...(mem.whatsappLogs||[]),log]}))); }
+            }
           }
           if(p.notes?.length) u.notes=[...new Set([...(mem.notes||[]),...p.notes])].slice(-30);
           if(p.userName) u.userName=p.userName;
