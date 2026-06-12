@@ -1589,69 +1589,62 @@ ${healthReport}`],{type:"text/plain"});const a=document.createElement("a");a.hre
 function InspireView({mem}) {
   const [cards,setCards]=useState([]);
   const [genLoading,setGenLoading]=useState(null);
+  const [customPrompt,setCustomPrompt]=useState("");
+  const [customLoading,setCustomLoading]=useState(false);
 
   const CATEGORIES=[
-    {id:"money",label:"Money",emoji:"💰",colors:["#1a0533","#4a1060","#7c3aed"],accent:"#f0c040"},
-    {id:"morning",label:"Morning",emoji:"🌅",colors:["#0c1a2e","#1e3a5f","#f97316"],accent:"#fde68a"},
-    {id:"hustle",label:"Hustle",emoji:"🔥",colors:["#1a0a00","#7c2d12","#dc2626"],accent:"#fb923c"},
-    {id:"mindset",label:"Mindset",emoji:"🧠",colors:["#030712","#1e1b4b","#4f46e5"],accent:"#a5b4fc"},
-    {id:"faith",label:"Faith",emoji:"✨",colors:["#0f172a","#0c2340","#0284c7"],accent:"#e0f2fe"},
-    {id:"health",label:"Health",emoji:"💪",colors:["#052e16","#14532d","#15803d"],accent:"#bbf7d0"},
-    {id:"love",label:"Love",emoji:"❤️",colors:["#1a0014","#7c0d3e","#db2777"],accent:"#fce7f3"},
-    {id:"naija",label:"Naija",emoji:"🇳🇬",colors:["#052e16","#14532d","#16a34a"],accent:"#fde68a"},
+    {id:"money",label:"Money",emoji:"💰",prompt:"motivational money wealth success poster, golden coins, luxury dark background, cinematic lighting, professional design"},
+    {id:"morning",label:"Morning",emoji:"🌅",prompt:"good morning motivational poster, beautiful golden sunrise, peaceful nature, inspiring quote background, warm colors"},
+    {id:"hustle",label:"Hustle",emoji:"🔥",prompt:"hustle grind success entrepreneur motivational poster, dark dramatic cinematic, fire energy, bold typography background"},
+    {id:"mindset",label:"Mindset",emoji:"🧠",prompt:"growth mindset motivational poster, galaxy universe brain concept, dark purple blue, inspiring professional design"},
+    {id:"faith",label:"Faith",emoji:"✨",prompt:"faith hope spiritual motivational poster, divine golden light rays, peaceful inspiring, premium design"},
+    {id:"health",label:"Health",emoji:"💪",prompt:"health fitness wellness motivational poster, vibrant green nature energy, strong confident, professional design"},
+    {id:"love",label:"Love",emoji:"❤️",prompt:"love warmth relationship motivational poster, soft rose gold colors, heart, beautiful inspiring premium design"},
+    {id:"naija",label:"Naija",emoji:"🇳🇬",prompt:"Nigerian African success motivational poster, vibrant green gold colors, Africa pride, entrepreneur inspiring professional design"},
   ];
 
-  const getQuote=async(category)=>{
-    const r=await ai([{role:"user",content:"Give me one powerful "+category+" motivational quote. Max 12 words. Bold and punchy. No author. Just the quote."}],"Return ONLY the quote text. No quotation marks. No explanation.");
-    return r.trim().replace(/^["“‘]|["”’]$/g,"");
+  const getQuote=async(label)=>{
+    const r=await ai([{role:"user",content:`Give me one powerful ${label} motivational quote. Max 10 words. Bold and punchy. No author. Just the quote.`}],"Return ONLY the quote. No quotation marks. No explanation.");
+    return r.trim().replace(/^["“]|["”]$/g,"");
   };
 
-  const drawCard=(cat,quote)=>new Promise(resolve=>{
-    const canvas=document.createElement("canvas");
-    canvas.width=600; canvas.height=600;
-    const ctx=canvas.getContext("2d");
-    const [c1,c2,c3]=cat.colors;
-    const grad=ctx.createLinearGradient(0,0,600,600);
-    grad.addColorStop(0,c1); grad.addColorStop(0.5,c2); grad.addColorStop(1,c3);
-    ctx.fillStyle=grad; ctx.fillRect(0,0,600,600);
-    ctx.globalAlpha=0.08; ctx.fillStyle=cat.accent;
-    ctx.beginPath(); ctx.arc(500,100,200,0,Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.arc(50,500,150,0,Math.PI*2); ctx.fill();
-    ctx.globalAlpha=1;
-    ctx.strokeStyle=cat.accent; ctx.lineWidth=3; ctx.globalAlpha=0.6;
-    ctx.beginPath(); ctx.moveTo(52,325); ctx.lineTo(160,325); ctx.stroke();
-    ctx.globalAlpha=1;
-    ctx.font="60px serif"; ctx.textAlign="left";
-    ctx.fillText(cat.emoji,48,115);
-    ctx.fillStyle="#ffffff"; ctx.font="bold 36px Arial,sans-serif"; ctx.textAlign="left";
-    ctx.shadowColor="rgba(0,0,0,0.6)"; ctx.shadowBlur=10;
-    const words=quote.split(" "); let lines=[]; let line="";
-    words.forEach(w=>{
-      const test=line?line+" "+w:w;
-      if(ctx.measureText(test).width>480&&line){lines.push(line);line=w;}
-      else line=test;
+  const generateImage=async(prompt)=>{
+    const r=await fetch("/imagine",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({prompt})
     });
-    if(line) lines.push(line);
-    const startY=310-(lines.length*26);
-    lines.forEach((l,i)=>ctx.fillText(l,52,startY+(i*54)));
-    ctx.shadowBlur=0;
-    ctx.font="500 14px Arial,sans-serif"; ctx.fillStyle=cat.accent; ctx.globalAlpha=0.85;
-    ctx.fillText(cat.label.toUpperCase(),52,560);
-    ctx.textAlign="right"; ctx.font="12px Arial,sans-serif";
-    ctx.fillStyle="rgba(255,255,255,0.3)";
-    ctx.fillText("Nia Life OS",548,580);
-    ctx.globalAlpha=1;
-    resolve(canvas.toDataURL("image/png"));
-  });
+    const d=await r.json();
+    if(d.error) throw new Error(d.error);
+    return d.image;
+  };
 
   const generate=async(cat)=>{
     setGenLoading(cat.id);
     try{
-      const quote=await getQuote(cat.label);
-      const imgUrl=await drawCard(cat,quote);
-      setCards(prev=>[{id:Date.now(),quote,category:cat.label,imgUrl,catId:cat.id},...prev].slice(0,12));
-    }catch(e){console.error(e);}
+      const [quote,imgUrl]=await Promise.all([
+        getQuote(cat.label),
+        generateImage(cat.prompt+" with inspirational text space, high quality, 4K")
+      ]);
+      setCards(prev=>[{id:Date.now(),quote,category:cat.label,emoji:cat.emoji,imgUrl,catId:cat.id},...prev].slice(0,12));
+    }catch(e){
+      console.error(e);
+      // Fallback to canvas if image generation fails
+      const quote=await getQuote(cat.label).catch(()=>"Every day is a new opportunity.");
+      setCards(prev=>[{id:Date.now(),quote,category:cat.label,emoji:cat.emoji,imgUrl:null,catId:cat.id},...prev].slice(0,12));
+    }
     setGenLoading(null);
+  };
+
+  const generateCustom=async()=>{
+    if(!customPrompt.trim()) return;
+    setCustomLoading(true);
+    try{
+      const imgUrl=await generateImage(customPrompt);
+      setCards(prev=>[{id:Date.now(),quote:customPrompt,category:"Custom",emoji:"✨",imgUrl,catId:"custom"},...prev].slice(0,12));
+      setCustomPrompt("");
+    }catch(e){console.error(e);}
+    setCustomLoading(false);
   };
 
   const download=(card)=>{
@@ -1668,8 +1661,19 @@ function InspireView({mem}) {
           <Icon name="image" size={18} color={C.pink}/>
           <h2 style={{fontSize:20,fontWeight:600,margin:0}}>Inspire</h2>
         </div>
-        <p style={{color:C.textMuted,fontSize:13,margin:0}}>AI quote cards generated instantly — no internet needed. Tap a category.</p>
+        <p style={{color:C.textMuted,fontSize:13,margin:0}}>AI-generated motivational images. Tap a category or create your own.</p>
       </div>
+
+      {/* Custom prompt */}
+      <Card style={{marginBottom:16}}>
+        <p style={{fontSize:12,fontWeight:600,color:C.textMuted,margin:"0 0 8px"}}>✨ Create your own image</p>
+        <div style={{display:"flex",gap:8}}>
+          <Input value={customPrompt} onChange={setCustomPrompt} placeholder="e.g. a lion conquering challenges at sunset..." onKeyDown={e=>e.key==="Enter"&&generateCustom()} style={{flex:1}}/>
+          <Btn variant="primary" onClick={generateCustom} loading={customLoading} icon="sparkle">Generate</Btn>
+        </div>
+      </Card>
+
+      {/* Categories */}
       <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:20}}>
         {CATEGORIES.map(cat=>(
           <button key={cat.id} onClick={()=>generate(cat)} disabled={!!genLoading} style={{padding:"8px 14px",borderRadius:99,fontSize:13,fontWeight:500,cursor:genLoading?"not-allowed":"pointer",fontFamily:"inherit",border:"1px solid "+C.border,background:genLoading===cat.id?C.accentMid:"transparent",color:genLoading===cat.id?C.accent:C.textMuted,transition:"all 0.2s",display:"flex",alignItems:"center",gap:6}}>
@@ -1678,143 +1682,37 @@ function InspireView({mem}) {
           </button>
         ))}
       </div>
-      {cards.length===0&&!genLoading&&(
+
+      {cards.length===0&&!genLoading&&!customLoading&&(
         <Card style={{textAlign:"center",padding:"48px 24px"}}>
           <div style={{fontSize:40,marginBottom:14}}>✨</div>
-          <p style={{fontSize:15,color:C.textMuted,margin:"0 0 6px"}}>Pick a category above</p>
-          <p style={{fontSize:13,color:C.textDim,margin:0}}>Nia writes the quote and draws a beautiful card instantly</p>
+          <p style={{fontSize:15,color:C.textMuted,margin:"0 0 6px"}}>Pick a category or write a custom prompt</p>
+          <p style={{fontSize:13,color:C.textDim,margin:0}}>Powered by Google Imagen — real AI-generated images</p>
         </Card>
       )}
+
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:14}}>
         {cards.map(card=>(
           <div key={card.id} style={{borderRadius:14,overflow:"hidden",border:"1px solid "+C.border,background:C.card}}>
-            <img src={card.imgUrl} alt={card.quote} style={{width:"100%",display:"block"}}/>
+            {card.imgUrl
+              ? <img src={card.imgUrl} alt={card.quote} style={{width:"100%",aspectRatio:"1",objectFit:"cover",display:"block"}}/>
+              : <div style={{width:"100%",aspectRatio:"1",background:"linear-gradient(135deg,#1a0533,#4a1060)",display:"flex",alignItems:"center",justifyContent:"center",padding:20,boxSizing:"border-box"}}>
+                  <p style={{fontSize:16,fontWeight:700,color:"#fff",textAlign:"center",lineHeight:1.5}}>{card.emoji} {card.quote}</p>
+                </div>
+            }
             <div style={{padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <span style={{fontSize:11,color:C.textMuted}}>{card.category}</span>
+              <div>
+                <span style={{fontSize:11,color:C.textMuted,display:"block"}}>{card.category}</span>
+                {card.quote&&card.imgUrl&&<span style={{fontSize:12,color:C.text,fontStyle:"italic"}}>"{card.quote.slice(0,40)}{card.quote.length>40?"...":""}"</span>}
+              </div>
               <div style={{display:"flex",gap:8}}>
                 <button onClick={()=>generate(CATEGORIES.find(c=>c.id===card.catId)||CATEGORIES[0])} style={{background:"none",border:"none",cursor:"pointer",color:C.textMuted,fontSize:11,display:"flex",alignItems:"center",gap:4,fontFamily:"inherit"}}><Icon name="refresh" size={12} color={C.textMuted}/>New</button>
-                <button onClick={()=>download(card)} style={{background:"none",border:"none",cursor:"pointer",color:C.accent,fontSize:11,display:"flex",alignItems:"center",gap:4,fontFamily:"inherit"}}><Icon name="download" size={12} color={C.accent}/>Save</button>
+                {card.imgUrl&&<button onClick={()=>download(card)} style={{background:"none",border:"none",cursor:"pointer",color:C.accent,fontSize:11,display:"flex",alignItems:"center",gap:4,fontFamily:"inherit"}}><Icon name="download" size={12} color={C.accent}/>Save</button>}
               </div>
             </div>
           </div>
         ))}
       </div>
-    </div>
-  );
-}
-
-// ─── TRAVEL VIEW ─────────────────────────────────────────────────────────────
-function TravelView({mem,save}) {
-  const [from,setFrom]=useState("");
-  const [to,setTo]=useState("");
-  const [date,setDate]=useState("");
-  const [results,setResults]=useState("");
-  const [loading,setLoading]=useState(false);
-
-  const POPULAR=[["Abuja","Lagos"],["Lagos","Abuja"],["Lagos","Port Harcourt"],["Abuja","Kano"],["Lagos","UK"],["Lagos","Dubai"]];
-  const today=new Date().toISOString().split("T")[0];
-
-  useEffect(()=>{
-    if(mem.lastTravelIntent){
-      if(mem.lastTravelIntent.from) setFrom(mem.lastTravelIntent.from);
-      if(mem.lastTravelIntent.to) setTo(mem.lastTravelIntent.to);
-    }
-  },[mem.lastTravelIntent]);
-
-  const search=async()=>{
-    if(!from.trim()||!to.trim()) return;
-    setLoading(true); setResults("");
-    const dateStr=date?new Date(date).toLocaleDateString("en-NG",{day:"numeric",month:"long",year:"numeric"}):"today or the nearest available date";
-    const query=`flights from ${from} to ${to} ${date?dateStr:""} prices airlines Nigeria naira`;
-    const r=await ai(
-      [{role:"user",content:`Search for: ${query}
-
-Find available flights from ${from} to ${to}${date?" on "+dateStr:""}. List the airlines, prices in Naira, departure times, and duration. Also mention the cheapest option and best day to book. Be concise.`}],
-      `You are a Nigerian travel assistant. Search the web for current flight information. Present results in a clean, readable format with:
-- Available flights (airline, price, time, duration)
-- Cheapest option highlighted
-- Best day to book tip
-- Where to book (Wakanow, Travelstart, Google Flights)
-Use Nigerian Naira. Keep it short and practical.`
-    );
-    setResults(r);
-    setLoading(false);
-  };
-
-  return(
-    <div style={{maxWidth:700,margin:"0 auto",width:"100%",padding:"24px 16px"}}>
-      <div style={{marginBottom:20}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
-          <Icon name="map" size={18} color={C.accent}/>
-          <h2 style={{fontSize:20,fontWeight:600,margin:0}}>Travel</h2>
-        </div>
-        <p style={{color:C.textMuted,fontSize:13,margin:0}}>Search for flights and get real pricing information.</p>
-      </div>
-
-      <Card style={{marginBottom:16}}>
-        <div style={{display:"flex",gap:10,marginBottom:12,flexWrap:"wrap"}}>
-          <div style={{flex:1,minWidth:120}}>
-            <p style={{fontSize:11,color:C.textMuted,margin:"0 0 5px"}}>From</p>
-            <Input value={from} onChange={setFrom} placeholder="e.g. Abuja" onKeyDown={e=>e.key==="Enter"&&search()}/>
-          </div>
-          <div style={{flex:1,minWidth:120}}>
-            <p style={{fontSize:11,color:C.textMuted,margin:"0 0 5px"}}>To</p>
-            <Input value={to} onChange={setTo} placeholder="e.g. Lagos" onKeyDown={e=>e.key==="Enter"&&search()}/>
-          </div>
-          <div style={{flex:1,minWidth:120}}>
-            <p style={{fontSize:11,color:C.textMuted,margin:"0 0 5px"}}>Date (optional)</p>
-            <input type="date" value={date} min={today} onChange={e=>setDate(e.target.value)} style={{background:C.surface,border:"1px solid "+C.border,color:C.text,borderRadius:10,padding:"10px 12px",fontSize:13,fontFamily:"inherit",width:"100%",boxSizing:"border-box"}}/>
-          </div>
-        </div>
-        <Btn variant="primary" onClick={search} loading={loading} style={{width:"100%",justifyContent:"center"}}>
-          {loading?"Searching flights...":"Search flights"}
-        </Btn>
-      </Card>
-
-      {/* Popular routes */}
-      {!results&&!loading&&<div style={{marginBottom:16}}>
-        <p style={{fontSize:12,color:C.textMuted,margin:"0 0 8px"}}>Popular routes</p>
-        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-          {POPULAR.map(([f,t])=>(
-            <button key={f+t} onClick={()=>{setFrom(f);setTo(t);}} style={{padding:"6px 12px",borderRadius:99,fontSize:12,cursor:"pointer",fontFamily:"inherit",border:"1px solid "+C.border,background:"transparent",color:C.textMuted}}>
-              {f} → {t}
-            </button>
-          ))}
-        </div>
-      </div>}
-
-      {/* Results */}
-      {results&&<Card style={{marginBottom:16}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
-          <Icon name="map" size={16} color={C.accent}/>
-          <p style={{margin:0,fontSize:14,fontWeight:600}}>{from} → {to} {date&&"· "+new Date(date).toLocaleDateString("en-NG",{day:"numeric",month:"short"})}</p>
-          <button onClick={()=>setResults("")} style={{marginLeft:"auto",background:"none",border:"none",cursor:"pointer",color:C.textMuted,fontSize:12,fontFamily:"inherit"}}>Clear</button>
-        </div>
-        <div style={{fontSize:14,color:C.text,lineHeight:1.8,whiteSpace:"pre-wrap"}}>{results}</div>
-        <div style={{marginTop:14,paddingTop:14,borderTop:"1px solid "+C.border,display:"flex",gap:8,flexWrap:"wrap"}}>
-          <p style={{fontSize:11,color:C.textMuted,margin:"auto 0"}}>Book on:</p>
-          {[
-            ["Wakanow","https://www.wakanow.com/en-NG/flights"],
-            ["Travelstart","https://www.travelstart.com.ng"],
-            ["Google Flights","https://www.google.com/travel/flights"],
-          ].map(([name,url])=>(
-            <a key={name} href={url} target="_blank" rel="noreferrer" style={{padding:"5px 12px",borderRadius:99,fontSize:12,border:"1px solid "+C.border,color:C.accent,textDecoration:"none",background:C.accentMid,fontFamily:"inherit",fontWeight:500}}>
-              {name} ↗
-            </a>
-          ))}
-        </div>
-      </Card>}
-
-      {/* Tips */}
-      {!results&&!loading&&<Card>
-        <p style={{fontSize:12,fontWeight:600,color:C.textMuted,margin:"0 0 10px",textTransform:"uppercase",letterSpacing:"0.05em"}}>Quick tips</p>
-        {["Book Tue–Thu for cheapest fares","Book 3–6 weeks ahead for best prices","Air Peace and Ibom Air usually cheapest domestic","Night buses save hotel costs on long routes"].map((t,i)=>(
-          <div key={i} style={{display:"flex",gap:8,marginBottom:7,alignItems:"flex-start"}}>
-            <span style={{color:C.accent,marginTop:2}}>•</span>
-            <p style={{margin:0,fontSize:13,color:C.textMuted}}>{t}</p>
-          </div>
-        ))}
-      </Card>}
     </div>
   );
 }
