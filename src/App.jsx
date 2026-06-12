@@ -1593,46 +1593,30 @@ function InspireView({mem}) {
   const [customLoading,setCustomLoading]=useState(false);
 
   const CATEGORIES=[
-    {id:"money",label:"Money",emoji:"💰",prompt:"motivational money wealth success poster, golden coins, luxury dark background, cinematic lighting, professional design"},
-    {id:"morning",label:"Morning",emoji:"🌅",prompt:"good morning motivational poster, beautiful golden sunrise, peaceful nature, inspiring quote background, warm colors"},
-    {id:"hustle",label:"Hustle",emoji:"🔥",prompt:"hustle grind success entrepreneur motivational poster, dark dramatic cinematic, fire energy, bold typography background"},
-    {id:"mindset",label:"Mindset",emoji:"🧠",prompt:"growth mindset motivational poster, galaxy universe brain concept, dark purple blue, inspiring professional design"},
-    {id:"faith",label:"Faith",emoji:"✨",prompt:"faith hope spiritual motivational poster, divine golden light rays, peaceful inspiring, premium design"},
-    {id:"health",label:"Health",emoji:"💪",prompt:"health fitness wellness motivational poster, vibrant green nature energy, strong confident, professional design"},
-    {id:"love",label:"Love",emoji:"❤️",prompt:"love warmth relationship motivational poster, soft rose gold colors, heart, beautiful inspiring premium design"},
-    {id:"naija",label:"Naija",emoji:"🇳🇬",prompt:"Nigerian African success motivational poster, vibrant green gold colors, Africa pride, entrepreneur inspiring professional design"},
+    {id:"money",label:"Money",emoji:"💰",keyword:"gold luxury wealth",overlay:"linear-gradient(135deg,rgba(20,10,0,0.7),rgba(120,80,0,0.5))"},
+    {id:"morning",label:"Morning",emoji:"🌅",keyword:"sunrise morning golden sky",overlay:"linear-gradient(135deg,rgba(0,10,30,0.6),rgba(180,80,0,0.4))"},
+    {id:"hustle",label:"Hustle",emoji:"🔥",keyword:"city night urban hustle",overlay:"linear-gradient(135deg,rgba(30,0,0,0.7),rgba(150,0,0,0.5))"},
+    {id:"mindset",label:"Mindset",emoji:"🧠",keyword:"galaxy universe stars space",overlay:"linear-gradient(135deg,rgba(0,0,30,0.7),rgba(60,0,120,0.5))"},
+    {id:"faith",label:"Faith",emoji:"✨",keyword:"light rays spiritual church",overlay:"linear-gradient(135deg,rgba(0,10,40,0.6),rgba(0,80,160,0.4))"},
+    {id:"health",label:"Health",emoji:"💪",keyword:"fitness nature green mountains",overlay:"linear-gradient(135deg,rgba(0,20,0,0.6),rgba(0,100,50,0.4))"},
+    {id:"love",label:"Love",emoji:"❤️",keyword:"flowers romantic pink sunset",overlay:"linear-gradient(135deg,rgba(30,0,20,0.6),rgba(150,0,80,0.4))"},
+    {id:"naija",label:"Naija",emoji:"🇳🇬",keyword:"africa nature green savanna",overlay:"linear-gradient(135deg,rgba(0,20,0,0.6),rgba(100,80,0,0.4))"},
   ];
 
   const getQuote=async(label)=>{
-    const r=await ai([{role:"user",content:`Give me one powerful ${label} motivational quote. Max 10 words. Bold and punchy. No author. Just the quote.`}],"Return ONLY the quote. No quotation marks. No explanation.");
-    return r.trim().replace(/^["“]|["”]$/g,"");
-  };
-
-  const generateImage=async(prompt)=>{
-    const r=await fetch("/imagine",{
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({prompt})
-    });
-    const d=await r.json();
-    if(d.error) throw new Error(d.error);
-    return d.image;
+    const r=await ai([{role:"user",content:`Give me one powerful ${label} motivational quote. Max 10 words. Bold and punchy. No author. Just the quote.`}],"Return ONLY the quote. No quotation marks. No markdown bold. No explanation.");
+    return r.trim().replace(/^["“*]|["”*]$/g,"").replace(/\*\*/g,"");
   };
 
   const generate=async(cat)=>{
     setGenLoading(cat.id);
     try{
-      const [quote,imgUrl]=await Promise.all([
-        getQuote(cat.label),
-        generateImage(cat.prompt+" with inspirational text space, high quality, 4K")
-      ]);
-      setCards(prev=>[{id:Date.now(),quote,category:cat.label,emoji:cat.emoji,imgUrl,catId:cat.id},...prev].slice(0,12));
-    }catch(e){
-      console.error(e);
-      // Fallback to canvas if image generation fails
-      const quote=await getQuote(cat.label).catch(()=>"Every day is a new opportunity.");
-      setCards(prev=>[{id:Date.now(),quote,category:cat.label,emoji:cat.emoji,imgUrl:null,catId:cat.id},...prev].slice(0,12));
-    }
+      const quote=await getQuote(cat.label);
+      // Use Unsplash for beautiful background photos - free, no API key needed
+      const seed=Date.now();
+      const imgUrl=`https://source.unsplash.com/600x600/?${encodeURIComponent(cat.keyword)}&sig=${seed}`;
+      setCards(prev=>[{id:seed,quote,category:cat.label,emoji:cat.emoji,imgUrl,overlay:cat.overlay,catId:cat.id},...prev].slice(0,12));
+    }catch(e){console.error(e);}
     setGenLoading(null);
   };
 
@@ -1640,18 +1624,42 @@ function InspireView({mem}) {
     if(!customPrompt.trim()) return;
     setCustomLoading(true);
     try{
-      const imgUrl=await generateImage(customPrompt);
-      setCards(prev=>[{id:Date.now(),quote:customPrompt,category:"Custom",emoji:"✨",imgUrl,catId:"custom"},...prev].slice(0,12));
+      const keywords=customPrompt.split(" ").slice(0,3).join(",");
+      const seed=Date.now();
+      const imgUrl=`https://source.unsplash.com/600x600/?${encodeURIComponent(keywords)}&sig=${seed}`;
+      setCards(prev=>[{id:seed,quote:customPrompt,category:"Custom",emoji:"✨",imgUrl,overlay:"linear-gradient(135deg,rgba(0,0,0,0.6),rgba(60,0,120,0.4))",catId:"custom"},...prev].slice(0,12));
       setCustomPrompt("");
     }catch(e){console.error(e);}
     setCustomLoading(false);
   };
 
-  const download=(card)=>{
-    const a=document.createElement("a");
-    a.href=card.imgUrl;
-    a.download="nia-inspire-"+Date.now()+".png";
-    a.click();
+  const download=async(card)=>{
+    // Draw on canvas then download
+    const canvas=document.createElement("canvas");
+    canvas.width=600; canvas.height=600;
+    const ctx=canvas.getContext("2d");
+    const img=new Image(); img.crossOrigin="anonymous";
+    img.onload=()=>{
+      ctx.drawImage(img,0,0,600,600);
+      // Overlay gradient
+      const grad=ctx.createLinearGradient(0,0,600,600);
+      grad.addColorStop(0,"rgba(0,0,0,0.65)");
+      grad.addColorStop(1,"rgba(0,0,0,0.4)");
+      ctx.fillStyle=grad; ctx.fillRect(0,0,600,600);
+      // Quote text
+      ctx.fillStyle="#ffffff"; ctx.font="bold 36px Arial,sans-serif";
+      ctx.textAlign="center"; ctx.shadowColor="rgba(0,0,0,0.8)"; ctx.shadowBlur=12;
+      const words=card.quote.split(" "); let lines=[]; let line="";
+      words.forEach(w=>{const t=line?line+" "+w:w; if(ctx.measureText(t).width>500&&line){lines.push(line);line=w;}else line=t;});
+      if(line) lines.push(line);
+      const startY=280-(lines.length*24);
+      lines.forEach((l,i)=>ctx.fillText(l,300,startY+(i*52)));
+      ctx.shadowBlur=0; ctx.font="16px Arial,sans-serif"; ctx.fillStyle="rgba(255,255,255,0.6)";
+      ctx.fillText("Nia Life OS",300,570);
+      const a=document.createElement("a"); a.href=canvas.toDataURL("image/png"); a.download="nia-inspire-"+Date.now()+".png"; a.click();
+    };
+    img.onerror=()=>{ const a=document.createElement("a"); a.href=card.imgUrl; a.download="nia-inspire.jpg"; a.target="_blank"; a.click(); };
+    img.src=card.imgUrl;
   };
 
   return(
@@ -1661,19 +1669,18 @@ function InspireView({mem}) {
           <Icon name="image" size={18} color={C.pink}/>
           <h2 style={{fontSize:20,fontWeight:600,margin:0}}>Inspire</h2>
         </div>
-        <p style={{color:C.textMuted,fontSize:13,margin:0}}>AI-generated motivational images. Tap a category or create your own.</p>
+        <p style={{color:C.textMuted,fontSize:13,margin:0}}>Beautiful photo cards with AI-written quotes. Tap a category.</p>
       </div>
 
       {/* Custom prompt */}
       <Card style={{marginBottom:16}}>
-        <p style={{fontSize:12,fontWeight:600,color:C.textMuted,margin:"0 0 8px"}}>✨ Create your own image</p>
+        <p style={{fontSize:12,fontWeight:600,color:C.textMuted,margin:"0 0 8px"}}>✨ Custom topic</p>
         <div style={{display:"flex",gap:8}}>
-          <Input value={customPrompt} onChange={setCustomPrompt} placeholder="e.g. a lion conquering challenges at sunset..." onKeyDown={e=>e.key==="Enter"&&generateCustom()} style={{flex:1}}/>
-          <Btn variant="primary" onClick={generateCustom} loading={customLoading} icon="sparkle">Generate</Btn>
+          <Input value={customPrompt} onChange={setCustomPrompt} placeholder="e.g. entrepreneurship, discipline, Lagos..." onKeyDown={e=>e.key==="Enter"&&generateCustom()} style={{flex:1}}/>
+          <Btn variant="primary" onClick={generateCustom} loading={customLoading} icon="sparkle">Create</Btn>
         </div>
       </Card>
 
-      {/* Categories */}
       <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:20}}>
         {CATEGORIES.map(cat=>(
           <button key={cat.id} onClick={()=>generate(cat)} disabled={!!genLoading} style={{padding:"8px 14px",borderRadius:99,fontSize:13,fontWeight:500,cursor:genLoading?"not-allowed":"pointer",fontFamily:"inherit",border:"1px solid "+C.border,background:genLoading===cat.id?C.accentMid:"transparent",color:genLoading===cat.id?C.accent:C.textMuted,transition:"all 0.2s",display:"flex",alignItems:"center",gap:6}}>
@@ -1683,31 +1690,30 @@ function InspireView({mem}) {
         ))}
       </div>
 
-      {cards.length===0&&!genLoading&&!customLoading&&(
+      {cards.length===0&&!genLoading&&(
         <Card style={{textAlign:"center",padding:"48px 24px"}}>
           <div style={{fontSize:40,marginBottom:14}}>✨</div>
-          <p style={{fontSize:15,color:C.textMuted,margin:"0 0 6px"}}>Pick a category or write a custom prompt</p>
-          <p style={{fontSize:13,color:C.textDim,margin:0}}>Powered by Google Imagen — real AI-generated images</p>
+          <p style={{fontSize:15,color:C.textMuted,margin:"0 0 6px"}}>Pick a category above</p>
+          <p style={{fontSize:13,color:C.textDim,margin:0}}>Beautiful Unsplash photos + AI quotes</p>
         </Card>
       )}
 
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:14}}>
         {cards.map(card=>(
-          <div key={card.id} style={{borderRadius:14,overflow:"hidden",border:"1px solid "+C.border,background:C.card}}>
-            {card.imgUrl
-              ? <img src={card.imgUrl} alt={card.quote} style={{width:"100%",aspectRatio:"1",objectFit:"cover",display:"block"}}/>
-              : <div style={{width:"100%",aspectRatio:"1",background:"linear-gradient(135deg,#1a0533,#4a1060)",display:"flex",alignItems:"center",justifyContent:"center",padding:20,boxSizing:"border-box"}}>
-                  <p style={{fontSize:16,fontWeight:700,color:"#fff",textAlign:"center",lineHeight:1.5}}>{card.emoji} {card.quote}</p>
-                </div>
-            }
-            <div style={{padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <div>
-                <span style={{fontSize:11,color:C.textMuted,display:"block"}}>{card.category}</span>
-                {card.quote&&card.imgUrl&&<span style={{fontSize:12,color:C.text,fontStyle:"italic"}}>"{card.quote.slice(0,40)}{card.quote.length>40?"...":""}"</span>}
+          <div key={card.id} style={{borderRadius:14,overflow:"hidden",border:"1px solid "+C.border,background:C.card,position:"relative"}}>
+            <div style={{position:"relative",width:"100%",paddingTop:"100%"}}>
+              <img src={card.imgUrl} alt="" crossOrigin="anonymous" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}
+                onError={e=>{e.target.style.display="none";}}/>
+              <div style={{position:"absolute",inset:0,background:card.overlay,display:"flex",flexDirection:"column",justifyContent:"flex-end",padding:20}}>
+                <p style={{margin:"0 0 6px",fontSize:11,color:"rgba(255,255,255,0.6)",textTransform:"uppercase",letterSpacing:"0.08em"}}>{card.emoji} {card.category}</p>
+                <p style={{margin:0,fontSize:18,fontWeight:700,color:"#fff",lineHeight:1.4,textShadow:"0 2px 8px rgba(0,0,0,0.8)"}}>{card.quote}</p>
               </div>
+            </div>
+            <div style={{padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{fontSize:11,color:C.textMuted}}>{card.category}</span>
               <div style={{display:"flex",gap:8}}>
                 <button onClick={()=>generate(CATEGORIES.find(c=>c.id===card.catId)||CATEGORIES[0])} style={{background:"none",border:"none",cursor:"pointer",color:C.textMuted,fontSize:11,display:"flex",alignItems:"center",gap:4,fontFamily:"inherit"}}><Icon name="refresh" size={12} color={C.textMuted}/>New</button>
-                {card.imgUrl&&<button onClick={()=>download(card)} style={{background:"none",border:"none",cursor:"pointer",color:C.accent,fontSize:11,display:"flex",alignItems:"center",gap:4,fontFamily:"inherit"}}><Icon name="download" size={12} color={C.accent}/>Save</button>}
+                <button onClick={()=>download(card)} style={{background:"none",border:"none",cursor:"pointer",color:C.accent,fontSize:11,display:"flex",alignItems:"center",gap:4,fontFamily:"inherit"}}><Icon name="download" size={12} color={C.accent}/>Save</button>
               </div>
             </div>
           </div>
