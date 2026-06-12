@@ -10,18 +10,19 @@ export async function onRequestPost(context) {
     const { prompt } = await context.request.json();
     if (!prompt) return new Response(JSON.stringify({ error: "No prompt" }), { status: 400, headers });
 
-    // Try Imagen 3
+    // Use Gemini 2.0 Flash with image generation
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${GEMINI_IMAGE_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${GEMINI_IMAGE_KEY}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          instances: [{ prompt }],
-          parameters: {
-            sampleCount: 1,
-            aspectRatio: "1:1",
-            safetySetting: "block_only_high",
+          contents: [{
+            parts: [{ text: `Create a beautiful, professional motivational poster image: ${prompt}. High quality, vibrant colors, suitable for social media sharing.` }]
+          }],
+          generationConfig: {
+            responseModalities: ["IMAGE", "TEXT"],
+            temperature: 1,
           }
         })
       }
@@ -30,38 +31,26 @@ export async function onRequestPost(context) {
     const data = await response.json();
 
     if (!response.ok) {
-      // Try Gemini 2.0 Flash image generation as fallback
-      const r2 = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${GEMINI_IMAGE_KEY}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { responseModalities: ["IMAGE", "TEXT"] }
-          })
-        }
-      );
-      const d2 = await r2.json();
-      const part = d2.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
-      if (part?.inlineData) {
-        return new Response(JSON.stringify({
-          image: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`,
-          model: "gemini-2.0-flash"
-        }), { headers });
-      }
+      console.error("Gemini image error:", JSON.stringify(data));
       throw new Error(data.error?.message || "Image generation failed");
     }
 
-    const imageData = data.predictions?.[0]?.bytesBase64Encoded;
-    if (!imageData) throw new Error("No image returned");
+    // Find image part in response
+    const parts = data.candidates?.[0]?.content?.parts || [];
+    const imagePart = parts.find(p => p.inlineData);
+
+    if (!imagePart?.inlineData) {
+      console.error("No image in response:", JSON.stringify(data).slice(0,500));
+      throw new Error("No image generated");
+    }
 
     return new Response(JSON.stringify({
-      image: `data:image/png;base64,${imageData}`,
-      model: "imagen-3"
+      image: `data:${imagePart.inlineData.mimeType};base64,${imagePart.inlineData.data}`,
+      model: "gemini-2.0-flash"
     }), { headers });
 
   } catch (err) {
+    console.error("imagine.js error:", err.message);
     return new Response(JSON.stringify({ error: err.message }), { status: 500, headers });
   }
 }
